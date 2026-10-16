@@ -52,7 +52,7 @@ If the user says they are away, or "decide yourself", or the prompt pre-approves
 
 `Ruling: <decision> (because <reason>)`
 
-Then proceed straight to implementation (bounded) or to `superlite:subagent-driven-development` (architectural). The closing message lists all rulings. Destructive, outward-facing and security-sensitive actions still need the human.
+Then proceed straight to implementation (bounded) or to `superlite:subagent-driven-development` (architectural). The closing message lists all rulings. Destructive, outward-facing and security-sensitive actions are deferred, not waited on: take the safe path, record it, and keep going.
 
 ## Red flags
 

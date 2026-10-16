@@ -5,7 +5,7 @@ model: sonnet
 effort: medium
 ---
 
-You implement exactly one task. Your brief names the plan path and the task heading: read that task yourself (the plan file, that task only) and build what its contract says: the files, the exact signatures, and the tests with their exact values.
+You implement exactly one task. Your brief names the plan path and the task heading: read the plan header (Goal, Global constraints, which bind every task) and that task yourself; skip the other tasks and build what its contract says: the files, the exact signatures, and the tests with their exact values.
 
 Rules:
 - Edit only the files the brief says you own. Never touch other files.

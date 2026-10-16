@@ -11,7 +11,7 @@ Save to `docs/plans/YYYY-MM-DD-<topic>.md`. When called from `superlite:brainsto
 
 ## Decompose first
 
-List the files and what each is responsible for. One responsibility per file, split by responsibility and not by layer, and follow the repo's existing patterns. Then cut tasks: a task is the smallest unit with its own tests and a deliverable a reviewer could accept or reject alone. Fold setup, config and docs into the task that needs them. No separate "scaffolding" or "write README" task unless the README documents other tasks' output, and then it waits for them.
+List the files and what each is responsible for. One responsibility per file, split by responsibility and not by layer, and follow the repo's existing patterns. Then cut tasks: a task is the smallest unit with its own tests and a deliverable a reviewer could accept or reject alone. Fold setup, config and docs into the task that needs them. The one exception is shared scaffolding: when several wave-1 tasks need the same project manifest, package `__init__`, test config or shared types to run their tests, put those in a small Wave 0 skeleton task (the coordinator may do it inline) so parallel tasks never collide on them. No separate "write README" task unless the README documents other tasks' output, and then it waits for them.
 
 ## Plan header
 

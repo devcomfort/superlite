@@ -39,7 +39,7 @@ No further menus or typed confirmations. Act on the answer.
 
 ## 5. Execute the choice
 
-- **Merge locally:** check out the base branch, merge the feature branch. If the merge was not a fast-forward or had conflicts, run the tests again via the test-runner. Then delete the feature branch with `git branch -d`.
+- **Merge locally:** if the work ran in a worktree, run the merge from the main checkout (where the base branch lives). Check out the base branch, merge the feature branch. If the merge was not a fast-forward or had conflicts, run the tests again via the test-runner. Remove the worktree (step 6), then delete the feature branch with `git branch -d`.
 - **Push and PR:** `git push -u origin <branch>`, then `gh pr create` with a title and a body holding the summary and test evidence. Report the PR URL. Keep the branch.
 - **Keep:** report the branch name and any worktree path. Nothing else.
 
