@@ -8,3 +8,5 @@ Hourly cron keep-alive job (session-only) pings the coordinator.
 - T10 smoke: plugin isolation verified (superlite arm: superlite skills+agents, no superpowers; both arms: orchestrator hidden, permissionMode auto).
 - BLOCKER: headless `claude` CLI is not logged in ("OAuth session expired"). The user must run `claude auth login` once. Hourly ping: run `claude auth status`; when loggedIn is true, re-run the smoke test (`rm -rf bench/runs/*-smoke` first), then start T11/T12 in the background.
 - Wave 2/3: T6 reference (86 own tests), T7 hidden (89 tests); hidden vs reference 89/89 first try; scorer self-test OK. Run dirs moved to ../superlite-bench-runs. Waiting on CLI login for T11/T12.
+- Plugin final review: 5 Important + minors fixed (commit 665a856).
+- bench/run_all.sh ready. Once `claude auth status` shows loggedIn true: start `bash bench/run_all.sh 1` in the background (exits 3 if logged out, 4 if smoke fails). Then T13: read bench/results/*.json, write bench/report.md, commit.
