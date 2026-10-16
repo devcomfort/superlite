@@ -185,9 +185,13 @@ def own_tests(run_dir: Path) -> dict:
 def cmd_score(arm: str, rep: str) -> dict:
     name = f"{arm}-{rep}"
     run_dir = RUNS / name
+    meta_path = RESULTS / f"{name}.meta.json"
+    deadline = time.time() + 8 * 3600
+    while not meta_path.exists() and time.time() < deadline:
+        time.sleep(60)  # the run is still going (e.g. launched in parallel); meta is written at its end
     events = read_events(RESULTS / f"{name}.jsonl")
     res = results_of(events)
-    meta = json.loads((RESULTS / f"{name}.meta.json").read_text(encoding="utf-8"))
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
     model_usage: dict[str, dict] = {}
     for r in res:
         for model, u in (r.get("modelUsage") or {}).items():

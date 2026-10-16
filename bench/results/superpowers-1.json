@@ -1,0 +1,48 @@
+{
+  "arm": "superpowers",
+  "rep": "1",
+  "smoke": false,
+  "wall_s": 2062.0,
+  "resumes": 0,
+  "cost_usd": 24.44,
+  "turns": 68,
+  "api_s": 5573.3,
+  "completed_marker": true,
+  "last_subtype": "success",
+  "agent_dispatches": 21,
+  "dispatch_models": {
+    "sonnet": 16,
+    "opus": 5
+  },
+  "coordinator_tool_calls": 61,
+  "model_usage": {
+    "claude-opus-5-5": {
+      "inputTokens": 690,
+      "outputTokens": 353421,
+      "cacheReadInputTokens": 26074155,
+      "cacheCreationInputTokens": 1149300,
+      "webSearchRequests": 0,
+      "costUSD": 19.291124999999997,
+      "contextWindow": 3000000,
+      "maxOutputTokens": 384000,
+      "thinkingTokens": 85239
+    },
+    "claude-sonnet-5-5": {
+      "inputTokens": 492,
+      "outputTokens": 194103,
+      "cacheReadInputTokens": 5671566,
+      "cacheCreationInputTokens": 1055085,
+      "webSearchRequests": 0,
+      "costUSD": 5.146883099999998,
+      "contextWindow": 3000000,
+      "maxOutputTokens": 384000,
+      "thinkingTokens": 31743
+    }
+  },
+  "src_loc": 1192,
+  "commits": 14,
+  "own_tests_summary": "298 passed in 2.25s",
+  "hidden_passed": 89,
+  "hidden_total": 89,
+  "hidden_failed_ids": []
+}

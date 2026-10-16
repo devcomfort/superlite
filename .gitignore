@@ -5,3 +5,6 @@ __pycache__/
 bench/reference/.venv/
 bench/reference/uv.lock
 bench/results/*-smoke*
+bench/results/*.jsonl
+bench/results/*.stderr
+bench/results/*.runlog

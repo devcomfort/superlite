@@ -1,0 +1,59 @@
+{
+  "arm": "superlite",
+  "rep": "1",
+  "smoke": false,
+  "wall_s": 526.7,
+  "resumes": 0,
+  "cost_usd": 29.52,
+  "turns": 46,
+  "api_s": 5554.0,
+  "completed_marker": true,
+  "last_subtype": "success",
+  "agent_dispatches": 10,
+  "dispatch_models": {
+    "sonnet": 8,
+    "haiku": 2
+  },
+  "coordinator_tool_calls": 36,
+  "model_usage": {
+    "claude-opus-5-5": {
+      "inputTokens": 630,
+      "outputTokens": 213705,
+      "cacheReadInputTokens": 20343483,
+      "cacheCreationInputTokens": 680040,
+      "webSearchRequests": 0,
+      "costUSD": 13.785636600000004,
+      "contextWindow": 9000000,
+      "maxOutputTokens": 1152000,
+      "thinkingTokens": 21978
+    },
+    "claude-sonnet-5-5": {
+      "inputTokens": 900,
+      "outputTokens": 651348,
+      "cacheReadInputTokens": 12827502,
+      "cacheCreationInputTokens": 3167181,
+      "webSearchRequests": 0,
+      "costUSD": 15.715982699999994,
+      "contextWindow": 9000000,
+      "maxOutputTokens": 1152000,
+      "thinkingTokens": 148266
+    },
+    "claude-haiku-5-5": {
+      "inputTokens": 72,
+      "outputTokens": 6696,
+      "cacheReadInputTokens": 148995,
+      "cacheCreationInputTokens": 70353,
+      "webSearchRequests": 0,
+      "costUSD": 0.013639275000000003,
+      "contextWindow": 9000000,
+      "maxOutputTokens": 1152000,
+      "thinkingTokens": 0
+    }
+  },
+  "src_loc": 1075,
+  "commits": 12,
+  "own_tests_summary": "208 passed in 1.39s",
+  "hidden_passed": 89,
+  "hidden_total": 89,
+  "hidden_failed_ids": []
+}
