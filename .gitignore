@@ -2,3 +2,5 @@ bench/runs/
 __pycache__/
 *.pyc
 .venv/
+bench/reference/.venv/
+bench/reference/uv.lock

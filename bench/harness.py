@@ -23,7 +23,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 BENCH = ROOT / "bench"
-RUNS = BENCH / "runs"
+# Outside the repo, so an arm can't wander up into hidden_tests/ or reference/.
+RUNS = Path(os.environ.get("BENCH_RUNS", ROOT.parent / "superlite-bench-runs"))
 RESULTS = BENCH / "results"
 MARKER = "BENCHMARK-COMPLETE"
 MAX_RESUMES = 6
