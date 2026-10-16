@@ -83,9 +83,16 @@ def results_of(events: list[dict]) -> list[dict]:
     return [e for e in events if e.get("type") == "result"]
 
 
+def clean_env() -> dict[str, str]:
+    """Drop variables inherited from a host Claude session (e.g. CLAUDE_CODE_SIMPLE turns on
+    bare mode, which skips plugin hooks), so each arm runs like a fresh terminal session."""
+    return {k: v for k, v in os.environ.items()
+            if not (k.startswith("CLAUDE") or k.startswith("ANTHROPIC"))}
+
+
 def invoke(cmd: list[str], cwd: Path, log: Path, err: Path) -> None:
     with log.open("a", encoding="utf-8") as out, err.open("a", encoding="utf-8") as er:
-        subprocess.run(cmd, cwd=cwd, stdout=out, stderr=er, stdin=subprocess.DEVNULL)
+        subprocess.run(cmd, cwd=cwd, stdout=out, stderr=er, stdin=subprocess.DEVNULL, env=clean_env())
 
 
 def cmd_run(arm: str, rep: str, smoke: bool) -> None:
