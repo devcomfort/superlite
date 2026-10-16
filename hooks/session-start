@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# SessionStart hook for the superlite plugin (Claude Code only)
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+content=$(cat "${PLUGIN_ROOT}/skills/using-superlite/SKILL.md" 2>&1 || echo "Error reading using-superlite skill")
+
+escape_for_json() {
+    local s="$1"
+    s="${s//\\/\\\\}"
+    s="${s//\"/\\\"}"
+    s="${s//$'\n'/\\n}"
+    s="${s//$'\r'/\\r}"
+    s="${s//$'\t'/\\t}"
+    printf '%s' "$s"
+}
+
+escaped=$(escape_for_json "$content")
+session_context="You have superlite. Its 'superlite:using-superlite' skill follows; load other skills with the Skill tool.\n\n${escaped}"
+
+printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$session_context"
+
+exit 0
