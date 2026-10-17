@@ -333,6 +333,9 @@ def dispatch_stats(events: list[dict]) -> dict:
         "dispatches": dispatches,
         "sibling_first_call_hit_rate": round(hits / total, 3) if total else None,
         "fork_dispatches": sum(1 for d in dispatches if d["subagent_type"] == "fork"),
+        "reviewer_dispatches": sum(1 for d in dispatches if kind(d, "review")),
+        "implementer_dispatches": len(impls),
+        "orchestrated": len(impls) >= 2,
         "coordinator_calls": len(coord),
         "coordinator_context_median": int(statistics.median(coord)) if coord else None,
         "coordinator_context_max": max(coord, default=None),
@@ -341,15 +344,16 @@ def dispatch_stats(events: list[dict]) -> dict:
     }
 
 
-def hidden_score(run_dir: Path) -> dict:
+def hidden_score(run_dir: Path, suite: Path | None = None, key: str = "hidden") -> dict:
+    suite = suite or TASK_HIDDEN
     with tempfile.TemporaryDirectory() as tmp:
         work = Path(tmp) / "w"
         shutil.copytree(run_dir, work, ignore=shutil.ignore_patterns(".git", ".venv", "__pycache__"))
-        shutil.copytree(TASK_HIDDEN, work / "hidden_tests")
+        shutil.copytree(suite, work / "hidden_tests")
         junit = Path(tmp) / "junit.xml"
         env = dict(os.environ, PYTHONPATH=os.pathsep.join([str(work / "src"), str(work)]))
         # A task may list extra test-only packages (e.g. playwright) in hidden/requirements.txt.
-        req = TASK_HIDDEN / "requirements.txt"
+        req = TASK_HIDDEN / "requirements.txt"  # the task's extras serve every suite
         pkgs = [ln.strip() for ln in (req.read_text(encoding="utf-8").splitlines() if req.exists() else [])]
         extras = [w for pkg in pkgs if pkg and not pkg.startswith("#") for w in ("--with", pkg)]
         subprocess.run(
@@ -358,19 +362,21 @@ def hidden_score(run_dir: Path) -> dict:
             cwd=work, env=env, capture_output=True, timeout=900,
         )
         if not junit.exists():
-            return {"hidden_passed": 0, "hidden_total": None, "hidden_failed_ids": ["(no junit)"]}
+            return {f"{key}_passed": 0, f"{key}_total": None, f"{key}_failed_ids": ["(no junit)"]}
         total, failed, by_file = 0, [], {}
         for case in ET.parse(junit).getroot().iter("testcase"):
             total += 1
-            f = (case.get("classname") or "").split(".")[-1]  # hidden_tests.test_api -> test_api
+            # hidden_tests.test_api -> test_api; with suite subdirs (importlib mode) keep "suite.test_x".
+            parts = (case.get("classname") or "").split(".")
+            f = ".".join(parts[-2:]) if len(parts) >= 2 and parts[-2] not in ("hidden_tests",) else parts[-1]
             bucket = by_file.setdefault(f, [0, 0])
             bucket[1] += 1
             if any(child.tag in ("failure", "error", "skipped") for child in case):
                 failed.append(f"{case.get('classname')}::{case.get('name')}")
             else:
                 bucket[0] += 1
-        return {"hidden_passed": total - len(failed), "hidden_total": total, "hidden_failed_ids": failed,
-                "hidden_by_file": {k: f"{p}/{t}" for k, (p, t) in sorted(by_file.items())}}
+        return {f"{key}_passed": total - len(failed), f"{key}_total": total, f"{key}_failed_ids": failed,
+                f"{key}_by_file": {k: f"{p}/{t}" for k, (p, t) in sorted(by_file.items())}}
 
 
 def own_tests(run_dir: Path) -> dict:
@@ -427,6 +433,9 @@ def cmd_score(arm: str, rep: str) -> dict:
         "commits": int(commits or 0),
         **own_tests(run_dir),
         **hidden_score(run_dir),
+        # Optional beyond-SPEC robustness probes (bench/tasks/<task>/robustness/), scored separately.
+        **(hidden_score(run_dir, TASK_HIDDEN.parent / "robustness", "robust")
+           if (TASK_HIDDEN.parent / "robustness").is_dir() else {}),
     }
     (RESULTS / f"{name}.json").write_text(json.dumps(score, indent=2), encoding="utf-8")
     brief = {k: v for k, v in score.items() if k not in ("model_usage", "hidden_failed_ids", "dispatches")}
