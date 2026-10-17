@@ -22,7 +22,7 @@ Hidden complexity found mid-task upgrades the size. Say so and step up. If the r
 
 Read the relevant code and recent commits first. Use an Explore agent (model haiku, effort low) for broad sweeps. Do not ask what the repo or the request already answers.
 
-If purpose, constraints or success criteria are still missing, ask them in ONE `AskUserQuestion` call: up to 4 questions, multiple choice where possible, your recommended option first. Never one question per message. Bounded work gets at most one batch. If nothing is missing, ask nothing and restate your understanding in the design instead.
+If purpose, constraints or success criteria are still missing, ask them in ONE `AskUserQuestion` call: up to 4 questions, multiple choice where possible, your recommended option first. For architectural work, include the plan `detail` choice in the same batch: `contracts`, `tests` or `full`. Recommend `full` when the core is algorithmic or risky, otherwise `tests` (the default). Never one question per message. Bounded work gets at most one batch. If nothing is missing, ask nothing and restate your understanding in the design instead.
 
 ## 3. Design
 
@@ -48,7 +48,7 @@ Until approval, only read-only exploration is allowed. No scaffolding, no depend
 
 ## Unattended mode
 
-If the user says they are away, or "decide yourself", or the prompt pre-approves design and plan, the gate is already passed. Skip the questions and the approval. Choose the sensible default for each open question and record it in the doc, or in chat for bounded work, as a line:
+If the user says they are away, or "decide yourself", or the prompt pre-approves design and plan, the gate is already passed. Skip the questions and the approval. Choose the sensible default for each open question, including the plan `detail` (`full` for algorithmic or risky cores, otherwise `tests`), and record it in the doc, or in chat for bounded work, as a line:
 
 `Ruling: <decision> (because <reason>)`
 

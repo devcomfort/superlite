@@ -27,6 +27,13 @@ Superlite uses one approval gate, plans that carry contracts instead of code, pa
 
 Agents: `implementer` (sonnet), `reviewer` (sonnet), `test-runner` (haiku).
 
+## Configuration
+
+- **`detail` (plan switch).** `writing-plans` records `**Detail:** contracts | tests | full` in the plan header, and a task can override it. `contracts` gives files, signatures and named tests with exact values. `tests` (the default) adds the test code verbatim and leaves the implementation to the implementer. `full` includes implementation code too, for tricky algorithms. `brainstorming` asks for it in its single batched question, and picks the default itself when unattended.
+- **Fork subagents.** The Opus final review runs as a fork of the coordinator, so it reads the coordinator's warm cache. Forks are on by default in interactive sessions. For `claude -p`, set `CLAUDE_CODE_FORK_SUBAGENT=1`.
+- **Implementer cache TTL.** The implementer's frontmatter sets a 1-hour prompt cache TTL, so its history is still cached when fix rounds arrive waves later. Setting `CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL=1h` in the environment does the same.
+- **Context-budgeted sizing.** Each task in a plan carries an `Est. context` line, predicted from the lines it writes, the lines it reads and the docs it is handed, on top of the implementer's fixed ~18k prefix. Tasks predicted above 80k are split, tasks whose variable part is smaller than the prefix are merged with a same-wave neighbor, waves hold at most 5 tasks, and the whole plan stays under 25k chars because it doubles as the shared prime. The coefficients are fit on one project, so treat them as a guide.
+
 ## Installation
 
 Installation differs by harness. If you use more than one, install superlite separately for each one. Every integration loads `using-superlite` at session start; to verify, open a fresh session and send `Let's make a react todo list`. A working install triggers `brainstorming` before any code is written.
