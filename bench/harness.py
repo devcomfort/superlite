@@ -28,6 +28,12 @@ BENCH = ROOT / "bench"
 # Outside the repo, so an arm can't wander up into hidden_tests/ or reference/.
 RUNS = Path(os.environ.get("BENCH_RUNS", ROOT.parent / "superlite-bench-runs"))
 RESULTS = BENCH / "results"
+# BENCH_TASK picks the task: "sitegen" (bench/task + bench/hidden_tests) or a dir under bench/tasks/
+# holding SPEC.md and hidden/. Non-default tasks prefix run and result names with the task name.
+TASK = os.environ.get("BENCH_TASK", "sitegen")
+TASK_SPEC = BENCH / "task" / "SPEC.md" if TASK == "sitegen" else BENCH / "tasks" / TASK / "SPEC.md"
+TASK_HIDDEN = BENCH / "hidden_tests" if TASK == "sitegen" else BENCH / "tasks" / TASK / "hidden"
+PREFIX = "" if TASK == "sitegen" else f"{TASK}-"
 MARKER = "BENCHMARK-COMPLETE"
 MAX_RESUMES = 6
 RESUME_PROMPT = (
@@ -111,7 +117,7 @@ DECIDER_TOOLS_OFF = "Bash Edit Write Read Glob Grep Agent WebFetch WebSearch Not
 def decide(claude: str, question: str, cwd: Path) -> tuple[str, float, float]:
     """Ask the Opus decision-maker (who plays the human) to answer the arm's last message.
     Returns (answer, seconds, cost_usd). It runs tool-less, skill-less and plugin-free."""
-    spec = (BENCH / "task" / "SPEC.md").read_text(encoding="utf-8")
+    spec = TASK_SPEC.read_text(encoding="utf-8")
     prompt = (f"<spec>\n{spec}\n</spec>\n\n<agent_message>\n{question[-8000:]}\n</agent_message>\n\n"
               "Reply now as the product owner.")
     # Prompt via stdin and system prompt via file: the SPEC alone is ~29k chars, and Windows
@@ -134,14 +140,14 @@ def decide(claude: str, question: str, cwd: Path) -> tuple[str, float, float]:
 
 def cmd_run(arm: str, rep: str, smoke: bool, human: bool = False) -> None:
     claude = shutil.which("claude") or "claude"
-    name = f"{arm}-{rep}" + ("-smoke" if smoke else "")
+    name = f"{PREFIX}{arm}-{rep}" + ("-smoke" if smoke else "")
     run_dir = RUNS / name
     RESULTS.mkdir(parents=True, exist_ok=True)
     log, err = RESULTS / f"{name}.jsonl", RESULTS / f"{name}.stderr"
     if run_dir.exists():
         sys.exit(f"run dir exists: {run_dir}")
     run_dir.mkdir(parents=True)
-    shutil.copy(BENCH / "task" / "SPEC.md", run_dir / "SPEC.md")
+    shutil.copy(TASK_SPEC, run_dir / "SPEC.md")
     git(run_dir, "init", "-q", "-b", "main")
     git(run_dir, "add", "SPEC.md")
     git(run_dir, "-c", "user.name=bench", "-c", "user.email=bench@local", "commit", "-qm", "Add SPEC.md")
@@ -339,36 +345,46 @@ def hidden_score(run_dir: Path) -> dict:
     with tempfile.TemporaryDirectory() as tmp:
         work = Path(tmp) / "w"
         shutil.copytree(run_dir, work, ignore=shutil.ignore_patterns(".git", ".venv", "__pycache__"))
-        shutil.copytree(BENCH / "hidden_tests", work / "hidden_tests")
+        shutil.copytree(TASK_HIDDEN, work / "hidden_tests")
         junit = Path(tmp) / "junit.xml"
-        env = dict(os.environ, PYTHONPATH=str(work / "src"))
+        env = dict(os.environ, PYTHONPATH=os.pathsep.join([str(work / "src"), str(work)]))
+        # A task may list extra test-only packages (e.g. playwright) in hidden/requirements.txt.
+        req = TASK_HIDDEN / "requirements.txt"
+        pkgs = [ln.strip() for ln in (req.read_text(encoding="utf-8").splitlines() if req.exists() else [])]
+        extras = [w for pkg in pkgs if pkg and not pkg.startswith("#") for w in ("--with", pkg)]
         subprocess.run(
-            ["uv", "run", "--no-project", "--with", "pytest", "python", "-m", "pytest",
+            ["uv", "run", "--no-project", "--with", "pytest", *extras, "python", "-m", "pytest",
              "hidden_tests", "-q", "-p", "no:cacheprovider", f"--junitxml={junit}"],
-            cwd=work, env=env, capture_output=True, timeout=600,
+            cwd=work, env=env, capture_output=True, timeout=900,
         )
         if not junit.exists():
             return {"hidden_passed": 0, "hidden_total": None, "hidden_failed_ids": ["(no junit)"]}
-        total, failed = 0, []
+        total, failed, by_file = 0, [], {}
         for case in ET.parse(junit).getroot().iter("testcase"):
             total += 1
+            f = (case.get("classname") or "").split(".")[-1]  # hidden_tests.test_api -> test_api
+            bucket = by_file.setdefault(f, [0, 0])
+            bucket[1] += 1
             if any(child.tag in ("failure", "error", "skipped") for child in case):
                 failed.append(f"{case.get('classname')}::{case.get('name')}")
-        return {"hidden_passed": total - len(failed), "hidden_total": total, "hidden_failed_ids": failed}
+            else:
+                bucket[0] += 1
+        return {"hidden_passed": total - len(failed), "hidden_total": total, "hidden_failed_ids": failed,
+                "hidden_by_file": {k: f"{p}/{t}" for k, (p, t) in sorted(by_file.items())}}
 
 
 def own_tests(run_dir: Path) -> dict:
     proc = subprocess.run(
         ["uv", "run", "--no-project", "--with", "pytest", "python", "-m", "pytest", "-q", "-p", "no:cacheprovider",
          "--ignore=hidden_tests"],
-        cwd=run_dir, env=dict(os.environ, PYTHONPATH=str(run_dir / "src")), capture_output=True, text=True, timeout=600,
+        cwd=run_dir, env=dict(os.environ, PYTHONPATH=os.pathsep.join([str(run_dir / "src"), str(run_dir)])), capture_output=True, text=True, timeout=600,
     )
     tail = proc.stdout.strip().splitlines()[-1:] or [""]
     return {"own_tests_summary": tail[0]}
 
 
 def cmd_score(arm: str, rep: str) -> dict:
-    name = f"{arm}-{rep}"
+    name = f"{PREFIX}{arm}-{rep}"
     run_dir = RUNS / name
     meta_path = RESULTS / f"{name}.meta.json"
     deadline = time.time() + 8 * 3600
@@ -420,7 +436,7 @@ def cmd_score(arm: str, rep: str) -> dict:
 
 def cmd_report() -> None:
     paths = [p for p in sorted(RESULTS.glob("*-*.json"))
-             if re.fullmatch(r"(superpowers|superlite)-h?\d+\.json", p.name)]
+             if re.fullmatch(rf"{re.escape(PREFIX)}(superpowers|superlite)-[a-z]?\d+\.json", p.name)]
     rows = [json.loads(p.read_text(encoding="utf-8")) for p in paths]
     for r in rows:
         r["decisions"] = r.get("resumes") if r.get("mode") == "human" else ""
