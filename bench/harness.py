@@ -316,7 +316,7 @@ def dispatch_stats(events: list[dict]) -> dict:
         return word in ((d["subagent_type"] or "") + " " + (d["description"] or "")).lower()
 
     impls = [d for d in dispatches if d["start_s"] is not None and
-             (d["subagent_type"].endswith("implementer") or re.match(r"(implement|t\d)", (d["description"] or "").lower()))]
+             (d["subagent_type"].endswith("implementer") or re.match(r"(implement|t\d|task\s*\d)", (d["description"] or "").lower()))]
     finals = [d for d in dispatches if d["start_s"] is not None and kind(d, "review") and kind(d, "final")
               and not kind(d, "fix") and not kind(d, "re-review")]
     final = min(finals, key=lambda d: d["start_s"]) if finals else None
