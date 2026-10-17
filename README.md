@@ -46,20 +46,20 @@ Or add it as a marketplace:
 |---|---|---|
 | Wall-clock | 34.4 min | **8.8 min** (3.9× faster) |
 | Hidden tests | 89 / 89 | 89 / 89 |
-| Cost (API-equivalent) | **$24.44** | $29.52 |
+| Cost (API-equivalent) | $8.15 | **$3.28** (60% cheaper) |
 
-Full write-up: [bench/report.md](bench/report.md).
+Full write-up: [bench/report.md](bench/report.md). (An earlier version of these numbers overstated both costs because of a scoring bug; see the correction note in the report.)
 
 ## Tasks
 
-- [ ] **Superlite 0.2: cut worker cost, re-run with 3 reps.** In run 1, Sonnet spend tripled ($15.72 vs $5.15, 651K output tokens) and the Opus coordinator accumulated about 20M cache-read tokens. Steps:
-  - Find what the coordinator re-read each turn (from `bench/results/superlite-1.jsonl`) and push that reading into workers.
-  - Run implementers at effort `low` for contract tasks.
-  - Give each implementer up to 2 related modules per brief.
-  - Tighten the test guidance in `writing-plans` so implementers don't over-produce tests.
-  - Re-run 3 reps per arm sequentially and update `bench/report.md` with mean/min/max.
+- [ ] **Superlite 0.2: cache sharing, Opus review and code-in-plan as measured options, 3 reps.** The design is in `C:\Work\Planning\Specs\2026-10-17-superlite-architecture-design.md`. Steps:
+  - Shared, byte-identical brief prefixes, with warm-then-fan-out dispatch and the 1-hour subagent cache TTL.
+  - The Opus final review back as the default.
+  - A `code-in-plan` switch.
+  - A harder benchmark task where review quality shows.
+  - 3 reps per arm, run sequentially.
 
-  Done when superlite's cost is at or below superpowers', it is still at least 2.5× faster, and it still passes 89/89.
+  Done when the measured speed holds (at least 2.5× faster than superpowers), cost stays at or below superpowers', and each option's effect is measured.
 
 ## Note
 

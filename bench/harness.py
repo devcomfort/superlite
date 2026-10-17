@@ -192,6 +192,14 @@ def cmd_score(arm: str, rep: str) -> dict:
     events = read_events(RESULTS / f"{name}.jsonl")
     res = results_of(events)
     meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    # A session emits a result event each time the coordinator idles while background agents
+    # run; cost and modelUsage in each are cumulative for the session, so keep only the last
+    # result per session (resumes start new sessions). num_turns is per segment, so it sums.
+    last_per_session: dict[str, dict] = {}
+    for r in res:
+        last_per_session[r.get("session_id") or ""] = r
+    turns = sum(r.get("num_turns") or 0 for r in res)
+    res_all, res = res, list(last_per_session.values())
     model_usage: dict[str, dict] = {}
     for r in res:
         for model, u in (r.get("modelUsage") or {}).items():
@@ -206,10 +214,11 @@ def cmd_score(arm: str, rep: str) -> dict:
     score = {
         **meta,
         "cost_usd": round(sum(r.get("total_cost_usd") or 0 for r in res), 2),
-        "turns": sum(r.get("num_turns") or 0 for r in res),
+        "turns": turns,
         "api_s": round(sum(r.get("duration_api_ms") or 0 for r in res) / 1000, 1),
-        "completed_marker": bool(res) and MARKER in (res[-1].get("result") or ""),
-        "last_subtype": res[-1].get("subtype") if res else None,
+        "result_events": len(res_all),
+        "completed_marker": bool(res_all) and MARKER in (res_all[-1].get("result") or ""),
+        "last_subtype": res_all[-1].get("subtype") if res_all else None,
         **stream_stats(events),
         "model_usage": model_usage,
         "src_loc": src_loc,
