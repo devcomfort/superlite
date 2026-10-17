@@ -1,0 +1,29 @@
+{
+  "name": "superlite",
+  "version": "0.1.0",
+  "description": "Superlite skills and runtime bootstrap for coding agents",
+  "type": "module",
+  "main": ".opencode/plugins/superlite.js",
+  "author": "CWogu",
+  "license": "MIT",
+  "homepage": "https://github.com/iha2/superlite",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/iha2/superlite.git"
+  },
+  "keywords": [
+    "pi-package",
+    "skills",
+    "tdd",
+    "debugging",
+    "workflow"
+  ],
+  "pi": {
+    "extensions": [
+      "./.pi/extensions/superlite.ts"
+    ],
+    "skills": [
+      "./skills"
+    ]
+  }
+}

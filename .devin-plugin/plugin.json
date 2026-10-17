@@ -1,0 +1,20 @@
+{
+  "name": "superlite",
+  "version": "0.1.0",
+  "description": "Lightweight Claude Code skills for the build lifecycle: one approval gate, parallel waves, short reports",
+  "author": {
+    "name": "CWogu"
+  },
+  "homepage": "https://github.com/iha2/superlite",
+  "repository": "https://github.com/iha2/superlite",
+  "license": "MIT",
+  "keywords": [
+    "brainstorming",
+    "subagent-driven-development",
+    "skills",
+    "planning",
+    "tdd",
+    "debugging",
+    "workflow"
+  ]
+}

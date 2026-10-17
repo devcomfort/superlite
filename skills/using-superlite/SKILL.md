@@ -22,3 +22,5 @@ After approval, stop only for destructive, outward-facing (push, merge, publish)
 - finish -> superlite:finishing-a-development-branch
 
 Invoke a skill only when the task matches it. Conversation and trivial edits need none.
+
+**Platform adaptation.** Off Claude Code, read the matching `references/<harness>-tools.md` next to this skill (antigravity, codex, gemini, hermes, muse, pi; claude-code for notes). It maps tool names and says how to run `agents/*.md` without plugin agents.
