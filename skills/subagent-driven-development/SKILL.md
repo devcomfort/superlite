@@ -32,8 +32,8 @@ With 3 or fewer tasks, or one dependency chain, skip agents: implement directly 
 | Implement a task (low when the plan carries full code or the change is single-file mechanical) | superlite:implementer | sonnet | medium |
 | Run tests or a build | superlite:test-runner | haiku | low |
 | Wave review | superlite:reviewer | sonnet | medium |
-| Final review (also when the branch touches auth, security or personal data) | fork | opus | high |
-| Final review fallback: no fork, or the coordinator is not Opus | superlite:reviewer | opus | high |
+| Package or mid-build review of a finished component (optional) | fork | opus | high |
+| Final review: always, fresh eyes plus robustness probes | superlite:reviewer (final mode) | opus | high |
 | Web or docs research | general-purpose | sonnet | medium |
 
 Pass `model` and `effort` on the call; they override the agent frontmatter. Haiku never reviews. For fix round 2 or a BLOCKED task, re-dispatch once on a stronger model, not the same one (a fresh agent skips the prime: brief it with the task message plus the plan path); if it is still blocked, take the task over yourself.
@@ -72,8 +72,8 @@ Siblings share the cache only when the whole first message is byte-identical, so
 
 When all waves are done, pending findings are fixed, and the suite is green:
 - Write the whole-branch diff to a scratch file (`git diff <start-sha>..HEAD`).
-- Dispatch one fork (`subagent_type: "fork"`, effort high). It inherits your context, so the brief is short: the diff path, the progress file's minor and ruling lines to triage, "re-derive the requirements from the spec, not from the rulings", and "report in at most 400 words, same format as superlite:reviewer". Fallback: `superlite:reviewer`, model opus, effort high, given the diff path, plan path and those lines.
-- If it returns findings, dispatch **one** implementer (or fix small ones yourself) with the complete list, then test-runner once. If a Critical finding was fixed, one scoped reviewer checks just the fix diff; otherwise no re-review.
+- Dispatch one **fresh** `superlite:reviewer` in **final mode** (model opus, effort high). It is not a fork: it must not share your blind spots. Its brief holds the diff path, the spec path, the plan path, how to import and run the code (package path and entry points), the progress file's minor and ruling lines to triage, and "final mode: re-derive the requirements from the spec, and run the robustness checklist with real probes". A 15-second final review is a failed review: if it returns in under 2 minutes with no probes listed, send it back once with "run the checklist probes".
+- If it returns findings, dispatch **one** implementer (or fix small ones yourself) with the complete list. Every robustness finding gets a regression test built from its probe input. Then test-runner once. If a Critical finding was fixed, one scoped reviewer checks just the fix diff; otherwise no re-review.
 - Anything still open is listed for the human, with a ruling.
 
 ## Finish

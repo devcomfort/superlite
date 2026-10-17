@@ -21,8 +21,8 @@ After approval, stop only for destructive, outward-facing (push, merge, publish)
 - claim done -> superlite:verification-before-completion
 - finish -> superlite:finishing-a-development-branch
 
-Invoke a skill only when the task matches it. Conversation and trivial edits need none. Building inline instead of waves is fine when it's faster.
+Invoke a skill only when the task matches it. Conversation and trivial edits need none. **Lean toward orchestration:** for a non-trivial build, plan waves and dispatch subagents in parallel. Build inline only when you judge the task small (a few files, one dependency chain), and say so.
 
-**Final review always applies.** Any non-trivial build, inline or in waves, ends with one review on your own model tier before you claim done: a fork (`subagent_type: "fork"`), or `superlite:reviewer` with your model if forks are unavailable.
+**Final review always applies.** Any non-trivial build, inline or in waves, ends with one fresh `superlite:reviewer` in final mode on your own model tier (opus, effort high) before you claim done. It re-derives requirements from the spec and runs the robustness checklist with real probes.
 
 **Platform adaptation.** Off Claude Code, read the matching `references/<harness>-tools.md` next to this skill (antigravity, codex, gemini, hermes, muse, pi; claude-code for notes). It maps tool names and says how to run `agents/*.md` without plugin agents.
