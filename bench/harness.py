@@ -114,14 +114,16 @@ def decide(claude: str, question: str, cwd: Path) -> tuple[str, float, float]:
     spec = (BENCH / "task" / "SPEC.md").read_text(encoding="utf-8")
     prompt = (f"<spec>\n{spec}\n</spec>\n\n<agent_message>\n{question[-8000:]}\n</agent_message>\n\n"
               "Reply now as the product owner.")
-    cmd = [claude, "-p", prompt, "--model", "opus", "--output-format", "json",
-           "--system-prompt", (BENCH / "decider.md").read_text(encoding="utf-8"),
+    # Prompt via stdin and system prompt via file: the SPEC alone is ~29k chars, and Windows
+    # caps a command line at 32k.
+    cmd = [claude, "-p", "--model", "opus", "--output-format", "json",
+           "--system-prompt-file", str(BENCH / "decider.md"),
            "--disable-slash-commands", "--disallowedTools", DECIDER_TOOLS_OFF,
            "--settings", json.dumps({"enabledPlugins": {"superpowers@claude-plugins-official": False}}),
            "--no-session-persistence", "--max-budget-usd", "2"]
     t0 = time.time()
-    proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, encoding="utf-8",
-                          stdin=subprocess.DEVNULL, env=clean_env())
+    proc = subprocess.run(cmd, cwd=cwd, input=prompt, capture_output=True, text=True,
+                          encoding="utf-8", env=clean_env())
     secs = time.time() - t0
     try:
         out = json.loads(proc.stdout)
