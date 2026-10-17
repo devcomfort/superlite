@@ -1,0 +1,34 @@
+[
+ {
+  "module": "templates",
+  "variant": "contracts",
+  "hidden": "17/17",
+  "verbatim_tests": 0,
+  "cost": 0.22,
+  "secs": 78
+ },
+ {
+  "module": "templates",
+  "variant": "tests",
+  "hidden": "17/17",
+  "verbatim_tests": 4,
+  "cost": 0.203,
+  "secs": 75
+ },
+ {
+  "module": "markdown",
+  "variant": "contracts",
+  "hidden": "16/16",
+  "verbatim_tests": 0,
+  "cost": 0.112,
+  "secs": 40
+ },
+ {
+  "module": "markdown",
+  "variant": "tests",
+  "hidden": "16/16",
+  "verbatim_tests": 1,
+  "cost": 0.101,
+  "secs": 37
+ }
+]

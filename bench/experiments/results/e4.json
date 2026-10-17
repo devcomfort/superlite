@@ -1,0 +1,94 @@
+{
+ "bug_lines": {
+  "B1": [
+   "slug.py",
+   10
+  ],
+  "B2": [
+   "slug.py",
+   18
+  ],
+  "B3": [
+   "search.py",
+   10
+  ],
+  "B4": [
+   "search.py",
+   23
+  ],
+  "B5": [
+   "search.py",
+   46
+  ],
+  "B6": [
+   "search.py",
+   49
+  ]
+ },
+ "results": [
+  {
+   "reviewer": "sonnet-medium",
+   "found": [
+    "B1",
+    "B2",
+    "B3",
+    "B4",
+    "B5",
+    "B6"
+   ],
+   "recall": "6/6",
+   "reported": 6,
+   "false_or_extra": 0,
+   "cost": 0.092,
+   "secs": 15
+  },
+  {
+   "reviewer": "sonnet-high",
+   "found": [
+    "B1",
+    "B2",
+    "B3",
+    "B4",
+    "B5",
+    "B6"
+   ],
+   "recall": "6/6",
+   "reported": 6,
+   "false_or_extra": 0,
+   "cost": 0.096,
+   "secs": 17
+  },
+  {
+   "reviewer": "opus-max",
+   "found": [
+    "B1",
+    "B2",
+    "B3",
+    "B4",
+    "B5",
+    "B6"
+   ],
+   "recall": "6/6",
+   "reported": 7,
+   "false_or_extra": 1,
+   "cost": 0.194,
+   "secs": 23
+  },
+  {
+   "reviewer": "fable-max",
+   "found": [
+    "B1",
+    "B2",
+    "B3",
+    "B4",
+    "B5",
+    "B6"
+   ],
+   "recall": "6/6",
+   "reported": 7,
+   "false_or_extra": 1,
+   "cost": 0.192,
+   "secs": 21
+  }
+ ]
+}

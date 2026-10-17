@@ -1,0 +1,11 @@
+{
+  "arm": "superpowers",
+  "rep": "m1",
+  "smoke": false,
+  "mode": "human",
+  "wall_s": 2499.9,
+  "arm_wall_s": 2466.4,
+  "resumes": 3,
+  "decider_s": 33.5,
+  "decider_cost_usd": 0.333
+}

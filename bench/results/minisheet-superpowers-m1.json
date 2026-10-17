@@ -1,0 +1,83 @@
+{
+  "arm": "superpowers",
+  "rep": "m1",
+  "smoke": false,
+  "mode": "human",
+  "wall_s": 2499.9,
+  "arm_wall_s": 2466.4,
+  "resumes": 3,
+  "decider_s": 33.5,
+  "decider_cost_usd": 0.333,
+  "cost_usd": 5.22,
+  "turns": 86,
+  "api_s": 1051.3,
+  "result_events": 5,
+  "completed_marker": true,
+  "last_subtype": "success",
+  "agent_dispatches": 1,
+  "dispatch_models": {
+    "opus": 1
+  },
+  "coordinator_tool_calls": 76,
+  "dispatches": [
+    {
+      "subagent_type": "general-purpose",
+      "model": "opus-5-5",
+      "effort": null,
+      "description": "Whole-branch code review",
+      "api_calls": 9,
+      "first_call_cache_read": 0,
+      "first_call_cache_write": 18557,
+      "peak_context": 77358,
+      "total_cache_read": 438939,
+      "total_cache_write": 77356,
+      "start_s": 1219.2,
+      "end_s": 1635.8
+    }
+  ],
+  "sibling_first_call_hit_rate": null,
+  "fork_dispatches": 0,
+  "coordinator_calls": 67,
+  "coordinator_context_median": 116952,
+  "coordinator_context_max": 164892,
+  "max_concurrent_agents": 1,
+  "timeline": {
+    "plan_write_s": null,
+    "first_implementer_s": null,
+    "last_implementer_end_s": null,
+    "final_review_start_s": null,
+    "final_review_end_s": null,
+    "last_event_s": 2486.6
+  },
+  "model_usage": {
+    "claude-opus-5-5": {
+      "inputTokens": 152,
+      "outputTokens": 103422,
+      "thinkingTokens": 25211,
+      "cacheReadInputTokens": 7794528,
+      "cacheCreationInputTokens": 227751,
+      "webSearchRequests": 0,
+      "costUSD": 5.217893600000002,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000
+    }
+  },
+  "src_loc": 1526,
+  "commits": 14,
+  "own_tests_summary": "403 passed in 30.05s",
+  "hidden_passed": 88,
+  "hidden_total": 88,
+  "hidden_failed_ids": [],
+  "hidden_by_file": {
+    "test_api": "8/8",
+    "test_cli": "5/5",
+    "test_csvio": "5/5",
+    "test_evaluator": "12/12",
+    "test_functions": "14/14",
+    "test_lexer": "6/6",
+    "test_parser": "10/10",
+    "test_refs": "6/6",
+    "test_ui": "10/10",
+    "test_workbook": "12/12"
+  }
+}

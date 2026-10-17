@@ -1,0 +1,19 @@
+=== 16:38 start sitegen-core superpowers m1
+=== 16:38 start sitegen-core superlite m1
+{"arm": "superlite", "rep": "m1", "smoke": false, "mode": "human", "wall_s": 394.8, "arm_wall_s": 394.8, "resumes": 0, "decider_s": 0.0, "decider_cost_usd": 0.0}
+  File "C:\Users\CWogu\source\repos\superlite\bench\harness.py", line 354
+    if (line := line.strip()) and not line.startswith("#") for w in ("--with", line)]
+        ^^^^
+SyntaxError: assignment expression cannot rebind comprehension iteration variable 'line'
+=== 16:45 done sitegen-core superlite m1
+{"arm": "superpowers", "rep": "m1", "smoke": false, "mode": "human", "wall_s": 666.1, "arm_wall_s": 666.1, "resumes": 0, "decider_s": 0.0, "decider_cost_usd": 0.0}
+  File "C:\Users\CWogu\source\repos\superlite\bench\harness.py", line 354
+    if (line := line.strip()) and not line.startswith("#") for w in ("--with", line)]
+        ^^^^
+SyntaxError: assignment expression cannot rebind comprehension iteration variable 'line'
+=== 16:49 done sitegen-core superpowers m1
+  File "C:\Users\CWogu\source\repos\superlite\bench\harness.py", line 354
+    if (line := line.strip()) and not line.startswith("#") for w in ("--with", line)]
+        ^^^^
+SyntaxError: assignment expression cannot rebind comprehension iteration variable 'line'
+ALL-DONE

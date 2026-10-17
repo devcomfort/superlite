@@ -1,0 +1,78 @@
+{
+  "arm": "superpowers",
+  "rep": "m1",
+  "smoke": false,
+  "mode": "human",
+  "wall_s": 666.1,
+  "arm_wall_s": 666.1,
+  "resumes": 0,
+  "decider_s": 0.0,
+  "decider_cost_usd": 0.0,
+  "cost_usd": 2.88,
+  "turns": 59,
+  "api_s": 579.8,
+  "result_events": 2,
+  "completed_marker": true,
+  "last_subtype": "success",
+  "agent_dispatches": 1,
+  "dispatch_models": {
+    "opus": 1
+  },
+  "coordinator_tool_calls": 52,
+  "dispatches": [
+    {
+      "subagent_type": "general-purpose",
+      "model": "opus-5-5",
+      "effort": null,
+      "description": "Final whole-branch code review",
+      "api_calls": 10,
+      "first_call_cache_read": 0,
+      "first_call_cache_write": 18219,
+      "peak_context": 66888,
+      "total_cache_read": 383985,
+      "total_cache_write": 66886,
+      "start_s": 413.5,
+      "end_s": 594.5
+    }
+  ],
+  "sibling_first_call_hit_rate": null,
+  "fork_dispatches": 0,
+  "coordinator_calls": 40,
+  "coordinator_context_median": 71028,
+  "coordinator_context_max": 107879,
+  "max_concurrent_agents": 1,
+  "timeline": {
+    "plan_write_s": null,
+    "first_implementer_s": null,
+    "last_implementer_end_s": null,
+    "final_review_start_s": 413.5,
+    "final_review_end_s": 594.5,
+    "last_event_s": 657.1
+  },
+  "model_usage": {
+    "claude-opus-5-5": {
+      "inputTokens": 100,
+      "outputTokens": 58122,
+      "cacheReadInputTokens": 3182224,
+      "cacheCreationInputTokens": 160268,
+      "webSearchRequests": 0,
+      "costUSD": 2.8807708000000005,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 14285
+    }
+  },
+  "src_loc": 679,
+  "commits": 7,
+  "own_tests_summary": "269 passed in 0.30s",
+  "hidden_passed": 56,
+  "hidden_total": 56,
+  "hidden_failed_ids": [],
+  "hidden_by_file": {
+    "test_frontmatter": "9/9",
+    "test_markdown": "16/16",
+    "test_search": "9/9",
+    "test_slug": "5/5",
+    "test_templates": "17/17"
+  }
+}

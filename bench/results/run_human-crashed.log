@@ -1,0 +1,43 @@
+{"arm": "superpowers", "rep": "0", "smoke": true, "mode": "preapproved", "wall_s": 12.2, "arm_wall_s": 12.2, "resumes": 0, "decider_s": 0.0, "decider_cost_usd": 0.0}
+{"arm": "superlite", "rep": "0", "smoke": true, "mode": "preapproved", "wall_s": 13.2, "arm_wall_s": 13.2, "resumes": 0, "decider_s": 0.0, "decider_cost_usd": 0.0}
+=== 15:30 start superpowers h1
+Traceback (most recent call last):
+  File "C:\Users\CWogu\source\repos\superlite\bench\harness.py", line 442, in <module>
+    cmd_run(args[1], args[2], "--smoke" in args, "--human" in args)
+    ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\CWogu\source\repos\superlite\bench\harness.py", line 168, in cmd_run
+    answer, secs, cost = decide(claude, question, run_dir)
+                         ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\CWogu\source\repos\superlite\bench\harness.py", line 123, in decide
+    proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, encoding="utf-8",
+                          stdin=subprocess.DEVNULL, env=clean_env())
+  File "C:\Users\CWogu\AppData\Roaming\uv\python\cpython-3.15-windows-x86_64-none\Lib\subprocess.py", line 669, in run
+    with Popen(*popenargs, **kwargs) as process:
+         ~~~~~^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\CWogu\AppData\Roaming\uv\python\cpython-3.15-windows-x86_64-none\Lib\subprocess.py", line 1213, in __init__
+    self._execute_child(args, executable, preexec_fn, close_fds,
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                        pass_fds, cwd, env,
+                        ^^^^^^^^^^^^^^^^^^^
+    ...<5 lines>...
+                        gid, gids, uid, umask,
+                        ^^^^^^^^^^^^^^^^^^^^^^
+                        start_new_session, process_group)
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\CWogu\AppData\Roaming\uv\python\cpython-3.15-windows-x86_64-none\Lib\subprocess.py", line 1719, in _execute_child
+    hp, ht, pid, tid = _winapi.CreateProcess(executable, args,
+                       ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+                             # no special security
+                             ^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+                             cwd,
+                             ^^^^
+                             startupinfo)
+                             ^^^^^^^^^^^^
+FileNotFoundError: [WinError 206] The filename or extension is too long
+=== 16:21 done superpowers h1
+=== 16:21 start superlite h1
+run dir exists: C:\Users\CWogu\source\repos\superlite-bench-runs\superlite-h1
+=== 16:33 done superlite h1
+=== 16:33 start superlite h2
+run dir exists: C:\Users\CWogu\source\repos\superlite-bench-runs\superlite-h2

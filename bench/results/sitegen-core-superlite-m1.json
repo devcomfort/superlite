@@ -1,0 +1,89 @@
+{
+  "arm": "superlite",
+  "rep": "m1",
+  "smoke": false,
+  "mode": "human",
+  "wall_s": 394.8,
+  "arm_wall_s": 394.8,
+  "resumes": 0,
+  "decider_s": 0.0,
+  "decider_cost_usd": 0.0,
+  "cost_usd": 1.48,
+  "turns": 26,
+  "api_s": 367.1,
+  "result_events": 2,
+  "completed_marker": true,
+  "last_subtype": "success",
+  "agent_dispatches": 1,
+  "dispatch_models": {
+    "(default)": 1
+  },
+  "coordinator_tool_calls": 24,
+  "dispatches": [
+    {
+      "subagent_type": "superlite:reviewer",
+      "model": "sonnet-5-5",
+      "effort": null,
+      "description": "Spec conformance review",
+      "api_calls": 4,
+      "first_call_cache_read": 0,
+      "first_call_cache_write": 6429,
+      "peak_context": 34228,
+      "total_cache_read": 48827,
+      "total_cache_write": 34226,
+      "start_s": 298.8,
+      "end_s": 371.4
+    }
+  ],
+  "sibling_first_call_hit_rate": null,
+  "fork_dispatches": 0,
+  "coordinator_calls": 21,
+  "coordinator_context_median": 62088,
+  "coordinator_context_max": 72752,
+  "max_concurrent_agents": 1,
+  "timeline": {
+    "plan_write_s": null,
+    "first_implementer_s": null,
+    "last_implementer_end_s": null,
+    "final_review_start_s": null,
+    "final_review_end_s": null,
+    "last_event_s": 385.1
+  },
+  "model_usage": {
+    "claude-opus-5-5": {
+      "inputTokens": 42,
+      "outputTokens": 30903,
+      "cacheReadInputTokens": 1095115,
+      "cacheCreationInputTokens": 58255,
+      "webSearchRequests": 0,
+      "costUSD": 1.3032910000000002,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 5418
+    },
+    "claude-sonnet-5-5": {
+      "inputTokens": 8,
+      "outputTokens": 8693,
+      "cacheReadInputTokens": 48827,
+      "cacheCreationInputTokens": 34226,
+      "webSearchRequests": 0,
+      "costUSD": 0.1773937,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 6713
+    }
+  },
+  "src_loc": 656,
+  "commits": 2,
+  "own_tests_summary": "238 passed in 0.21s",
+  "hidden_passed": 56,
+  "hidden_total": 56,
+  "hidden_failed_ids": [],
+  "hidden_by_file": {
+    "test_frontmatter": "9/9",
+    "test_markdown": "16/16",
+    "test_search": "9/9",
+    "test_slug": "5/5",
+    "test_templates": "17/17"
+  }
+}

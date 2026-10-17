@@ -1,0 +1,9 @@
+{"arm": "superpowers", "rep": "0", "smoke": true, "mode": "preapproved", "wall_s": 11.6, "arm_wall_s": 11.6, "resumes": 0, "decider_s": 0.0, "decider_cost_usd": 0.0}
+{"arm": "superlite", "rep": "0", "smoke": true, "mode": "preapproved", "wall_s": 11.6, "arm_wall_s": 11.6, "resumes": 0, "decider_s": 0.0, "decider_cost_usd": 0.0}
+=== 15:59 start superpowers h1
+{"arm": "superpowers", "rep": "h1", "smoke": false, "mode": "human", "wall_s": 1227.8, "arm_wall_s": 1206.4, "resumes": 2, "decider_s": 21.4, "decider_cost_usd": 0.249}
+=== 16:20 done superpowers h1
+=== 16:20 start superlite h1
+{"arm": "superlite", "rep": "h1", "smoke": false, "mode": "human", "wall_s": 712.6, "arm_wall_s": 683.1, "resumes": 2, "decider_s": 29.5, "decider_cost_usd": 0.264}
+=== 16:32 done superlite h1
+=== 16:32 start superlite h2

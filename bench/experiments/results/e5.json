@@ -1,0 +1,164 @@
+[
+ {
+  "problem": "clamp",
+  "level": "easy",
+  "model": "haiku",
+  "pass1": true,
+  "score1": "4/4",
+  "cost1": 0.0028,
+  "secs1": 22
+ },
+ {
+  "problem": "clamp",
+  "level": "easy",
+  "model": "sonnet",
+  "pass1": true,
+  "score1": "4/4",
+  "cost1": 0.0438,
+  "secs1": 21
+ },
+ {
+  "problem": "clamp",
+  "level": "easy",
+  "model": "opus",
+  "pass1": true,
+  "score1": "4/4",
+  "cost1": 0.0866,
+  "secs1": 27
+ },
+ {
+  "problem": "palindrome",
+  "level": "easy",
+  "model": "haiku",
+  "pass1": true,
+  "score1": "5/5",
+  "cost1": 0.0029,
+  "secs1": 22
+ },
+ {
+  "problem": "palindrome",
+  "level": "easy",
+  "model": "sonnet",
+  "pass1": true,
+  "score1": "5/5",
+  "cost1": 0.0395,
+  "secs1": 20
+ },
+ {
+  "problem": "palindrome",
+  "level": "easy",
+  "model": "opus",
+  "pass1": true,
+  "score1": "5/5",
+  "cost1": 0.0864,
+  "secs1": 26
+ },
+ {
+  "problem": "roman",
+  "level": "medium",
+  "model": "haiku",
+  "pass1": true,
+  "score1": "17/17",
+  "cost1": 0.0035,
+  "secs1": 27
+ },
+ {
+  "problem": "roman",
+  "level": "medium",
+  "model": "sonnet",
+  "pass1": true,
+  "score1": "17/17",
+  "cost1": 0.0429,
+  "secs1": 21
+ },
+ {
+  "problem": "roman",
+  "level": "medium",
+  "model": "opus",
+  "pass1": true,
+  "score1": "17/17",
+  "cost1": 0.1037,
+  "secs1": 32
+ },
+ {
+  "problem": "intervals",
+  "level": "medium",
+  "model": "haiku",
+  "pass1": true,
+  "score1": "6/6",
+  "cost1": 0.0032,
+  "secs1": 26
+ },
+ {
+  "problem": "intervals",
+  "level": "medium",
+  "model": "sonnet",
+  "pass1": true,
+  "score1": "6/6",
+  "cost1": 0.0409,
+  "secs1": 24
+ },
+ {
+  "problem": "intervals",
+  "level": "medium",
+  "model": "opus",
+  "pass1": true,
+  "score1": "6/6",
+  "cost1": 0.0979,
+  "secs1": 33
+ },
+ {
+  "problem": "expr",
+  "level": "hard",
+  "model": "haiku",
+  "pass1": true,
+  "score1": "14/14",
+  "cost1": 0.0041,
+  "secs1": 31
+ },
+ {
+  "problem": "expr",
+  "level": "hard",
+  "model": "sonnet",
+  "pass1": true,
+  "score1": "14/14",
+  "cost1": 0.0514,
+  "secs1": 27
+ },
+ {
+  "problem": "expr",
+  "level": "hard",
+  "model": "opus",
+  "pass1": true,
+  "score1": "14/14",
+  "cost1": 0.1282,
+  "secs1": 36
+ },
+ {
+  "problem": "csv",
+  "level": "hard",
+  "model": "haiku",
+  "pass1": true,
+  "score1": "9/9",
+  "cost1": 0.0034,
+  "secs1": 26
+ },
+ {
+  "problem": "csv",
+  "level": "hard",
+  "model": "sonnet",
+  "pass1": true,
+  "score1": "9/9",
+  "cost1": 0.0432,
+  "secs1": 22
+ },
+ {
+  "problem": "csv",
+  "level": "hard",
+  "model": "opus",
+  "pass1": true,
+  "score1": "9/9",
+  "cost1": 0.1074,
+  "secs1": 30
+ }
+]
