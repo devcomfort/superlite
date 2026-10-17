@@ -49,6 +49,9 @@ def show(e):
 
 
 def main(path):
+    import os
+    while not os.path.exists(path):  # the arm may not have started yet
+        time.sleep(5)
     with open(path, encoding="utf-8", errors="replace") as f:
         while True:
             line = f.readline()
