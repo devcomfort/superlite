@@ -126,11 +126,11 @@ These are plan failures: "TBD", "TODO", "add error handling", "handle edge cases
 
 ## After writing: schedule, then lint
 
-Run both. Replace `PLAN` and `SPEC` with the paths.
+Run both. Replace `PLAN` and `SPEC` with the paths. `<superlite-root>` is two levels above this skill's "Base directory for this skill: ..." path (run it through `cygpath -u` first if that exists).
 
 ```
-python <skill-dir>/../subagent-driven-development/scripts/plan_tools.py schedule --plan PLAN --insert
-python <skill-dir>/../subagent-driven-development/scripts/plan_tools.py lint --plan PLAN --spec SPEC
+bash "<superlite-root>/skills/subagent-driven-development/scripts/sl" plan_tools schedule --plan PLAN --insert
+bash "<superlite-root>/skills/subagent-driven-development/scripts/sl" plan_tools lint --plan PLAN --spec SPEC
 ```
 
 `schedule --insert` writes the Gantt and its summary line (critical path, peak width, predicted total) under a `%% schedule` marker. Never hand-edit that block.

@@ -139,7 +139,7 @@ Skills speak in Claude Code's tool names. The plugin injects a flavor-specific m
 - Search file contents or find files -> `grep`, `glob`
 - Fetch a URL -> `webfetch`; search the web -> `websearch`
 
-OpenCode has no plugin agents. To run superlite's `implementer`, `reviewer` or `test-runner`, dispatch the generic subagent with the full text of `agents/<name>.md` (minus frontmatter) followed by the brief as its prompt, on the model tier named in that file.
+OpenCode has no plugin agents. To run superlite's `implementer`, `package-reviewer` or `final-reviewer` (tests run through `sl run_tests`, not an agent), dispatch the generic subagent with the full text of `agents/<name>.md` (minus frontmatter) followed by the brief as its prompt, on the model tier named in that file.
 
 ## Getting Help
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # PreToolUse hook (Bash, PowerShell): block commands that kill processes by name or
-# pattern (taskkill /IM, pkill, killall, Stop-Process -Name, kill -9 -1). Killing by PID
+# pattern (taskkill /IM or /FI, pkill, killall, Stop-Process -Name, Get-Process | Stop-Process, kill -9 -1). Killing by PID
 # is allowed. Pure bash + grep, so it needs no Python and adds only milliseconds.
 # Exit 2 blocks the command (message on stderr); anything else, including malformed
 # input, exits 0 with no output (fail open).
@@ -13,8 +13,16 @@ printf '%s' "$input" | grep -Eq '"tool_name"[[:space:]]*:[[:space:]]*"(Bash|Powe
 cmd="$(printf '%s' "$input" | sed -n 's/.*"command"[[:space:]]*:[[:space:]]*"\(\([^"\\]\|\\.\)*\)".*/\1/p' | head -n 1)"
 [ -n "$cmd" ] || exit 0
 
+# Literal \n \r \t escapes (still JSON-escaped) become spaces, so multi-line commands match.
+cmd="$(printf '%s' "$cmd" | sed 's/\\[nrt]/ /g')"
+
 w='[^[:alnum:]_]'
-if printf '%s' "$cmd" | grep -Eiq "(^|$w)taskkill($w.*)?[[:space:]]//?im($w|\$)|(^|$w)(pkill|killall)($w|\$)|(^|$w)stop-process($w.*)?[[:space:]]-name($w|\$)|(^|$w)kill[[:space:]]+-9[[:space:]]+-1([^0-9]|\$)"; then
+# Get-Process ... | Stop-Process (no -Id after Stop-Process) kills by name.
+gp_pipe=0
+if printf '%s' "$cmd" | grep -Eiq "(^|$w)get-process($w.*)?\|[[:space:]]*stop-process"    && ! printf '%s' "$cmd" | grep -Eiq "stop-process[^|;]*[[:space:]]-id($w|\$)"; then
+  gp_pipe=1
+fi
+if [ "$gp_pipe" = 1 ] || printf '%s' "$cmd" | grep -Eiq "(^|$w)taskkill($w.*)?[[:space:]]//?fi($w|\$)|(^|$w)kill[[:space:]]+(-s[[:space:]]+(kill|9)|-(kill|sigkill|9))[[:space:]]+-1([^0-9]|\$)|(^|$w)taskkill($w.*)?[[:space:]]//?im($w|\$)|(^|$w)(pkill|killall)($w|\$)|(^|$w)stop-process($w.*)?[[:space:]]-name($w|\$)|(^|$w)kill[[:space:]]+-9[[:space:]]+-1([^0-9]|\$)"; then
   echo "Blocked: this command kills processes by name or pattern, which can stop other sessions' processes. Kill only the PIDs you started (kill <PID>, taskkill /PID <PID>, Stop-Process -Id <PID>)." >&2
   exit 2
 fi

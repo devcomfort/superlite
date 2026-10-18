@@ -71,3 +71,33 @@ def test_hooks_json_has_both_entries():
     pre = data["hooks"]["PreToolUse"]
     assert pre[0]["matcher"] == "Bash|PowerShell"
     assert pre[0]["hooks"][0]["command"] == 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/block-unsafe-kill"'
+
+
+def test_blocks_multiline_and_escaped_newlines():
+    for cmd in ("echo x\npkill -f y", "echo x\r\npkill -f y", "echo x\n\tkillall node"):
+        assert run(cmd).returncode == 2, repr(cmd)
+    # a literal backslash-n typed by the model is treated the same way
+    assert run("echo x\npkill -f y").returncode == 2
+
+
+def test_blocks_get_process_pipe_taskkill_filter_kill_all():
+    for cmd, tool in (
+        ("Get-Process python | Stop-Process -Force", "PowerShell"),
+        ("get-process -Name node|stop-process", "PowerShell"),
+        ("taskkill /F /FI \"IMAGENAME eq python.exe\"", "Bash"),
+        ("taskkill //FI \"STATUS eq running\"", "Bash"),
+        ("kill -KILL -1", "Bash"),
+        ("kill -s KILL -1", "Bash"),
+    ):
+        assert run(cmd, tool).returncode == 2, cmd
+
+
+def test_allows_pid_forms_of_new_rules():
+    for cmd, tool in (
+        ("Get-Process -Id 12 | Stop-Process -Id 12", "PowerShell"),
+        ("kill -KILL 1234", "Bash"),
+        ("kill -s KILL 1234", "Bash"),
+        ("kill -9 12345", "Bash"),
+        ("echo x\nkill 1234", "Bash"),
+    ):
+        assert run(cmd, tool).returncode == 0, cmd
