@@ -364,6 +364,7 @@ def load_prices(path: Path = MODELS_JSON) -> dict[str, tuple]:
 
 
 PRICES = load_prices()
+ROUTING_JSON = RESULTS / "routing-recommendation.json"  # `rules` there give tier_planned when a dispatch line has no tier=
 # Same patterns as hooks/block-unsafe-kill: kill by image name or pattern.
 UNSAFE_KILL = re.compile(
     r"(?:^|[\s;&|(`])(?:taskkill\b[^\n]*?\s//?im(?!\w)|(?:pkill|killall)(?![\w-])"
@@ -1080,7 +1081,7 @@ def task_records(run_dir: Path, dispatches: list[dict], events: list[dict] | Non
             graph = pt.parse_taskgraph(plan)
         except pt.PlanError:
             graph = {}
-        out = mechanical.task_metrics(events, out, plan, graph, run_dir, PRICES)
+        out = mechanical.task_metrics(events, out, plan, graph, run_dir, PRICES, mechanical.load_rules(ROUTING_JSON))
     return out
 
 

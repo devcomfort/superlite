@@ -170,3 +170,51 @@ def test_report_rows_and_summary(tmp_path):
     assert "r1" in text and "no Haiku tasks in this run" in text and "COUNTERFACTUAL ESTIMATE" in text
     s = report_mechanical.summary(runs)
     assert s["runs"] == 2 and s["runs_with_haiku"] == 1 and s["first_time_pass_rate"] == 1.0
+
+
+def test_pool_honesty_violations_and_tier_source(tmp_path):
+    plans = tmp_path / "docs" / "plans"
+    plans.mkdir(parents=True)
+    (plans / "p.md").write_text(PLAN, encoding="utf-8")
+    s = Stream()
+    s.agent("a1", "Implementer A (T1)", "superlite:implementer", "Task T1 alpha", 10, 50, "sonnet")    # mechanical on Sonnet
+    s.agent("a2", "Implementer B (T2)", "superlite:implementer-haiku", "Task T2 beta", 10, 50, "haiku")  # design on Haiku
+    s.agent("a3", "Implementer C (T3)", "superlite:implementer-haiku", "Task T3 gamma tier=sonnet", 60, 90, "haiku")
+    tasks, block = harness.mechanical_score(tmp_path, s.ev, harness.dispatch_stats(s.ev, tmp_path)["dispatches"])
+    t = {x["task"]: x for x in tasks}
+    assert (t["T1"]["tier_planned"], t["T1"]["agent_model_used"], t["T1"]["pool_violation"]) == ("haiku", "sonnet", True)
+    assert (t["T2"]["tier_planned"], t["T2"]["pool_violation"]) == ("sonnet", True)
+    assert t["T3"]["tier_source"] == "dispatch" and t["T3"]["pool_violation"] is True
+    assert block["pool"]["pool_violations"] == 3 and block["pool"]["haiku_agents"] == 2
+    assert "haiku" in block["pool"]["start_lag_s_by_model"]
+
+
+def test_planned_tier_rules_table():
+    plan = __import__("plan_tools").Plan(PLAN)
+    rules = {"table": [{"when": {"loc_max": 100, "tests": "fast", "kind_mechanical": True}, "tier": "haiku"}]}
+    assert mechanical.planned_tier(plan.by_id["T1"], "", rules, "mechanical") == ("haiku", "rules")
+    assert mechanical.planned_tier(plan.by_id["T2"], "", rules, "design") == ("sonnet", "kind")
+
+
+def test_haiku_on_critical_path_violation(tmp_path):
+    # T1 (Haiku, mechanical) finishes last among T1/T2, so it is on the critical path
+    t, block = run(tmp_path, t1_end=100.0, t2_end=60.0)
+    assert t["T1"]["on_critical_path"] is True and t["T1"]["haiku_on_critical_path"] is True and t["T1"]["pool_violation"] is True
+    assert block["pool"]["haiku_on_critical_path"] == 1 and block["pool"]["haiku_on_critical_path_tasks"] == ["T1"]
+    t2, block2 = run(tmp_path / "b")  # off the critical path
+    assert t2["T1"]["haiku_on_critical_path"] is False and block2["pool"]["haiku_on_critical_path"] == 0
+
+
+def test_slack_stats_and_money_left():
+    import routing_evidence as r
+    def smp(run, crit, slack, model="sonnet", cost=0.2):
+        return {"source": "run", "run": run, "task": "T", "model": model, "kind": "mechanical", "lint_reasons": [], "critical": crit,
+                "slack_s": slack, "cost_usd": cost}
+    ss = [smp("a", False, 200.0), smp("a", False, 30.0), smp("a", True, 0.0), smp("a", False, 0.0)]
+    st = r.slack_stats(ss, {"median_s": 100.0}, 7.0)
+    p = st["proxy_all_tasks"]["pooled"]
+    assert p["n"] == 4 and p["slack>0s"] == 0.5 and p["slack>60s"] == 0.25 and st["slack_needed_to_absorb_miss_s"] == 107.0
+    ms = r.min_slack(st)
+    assert ms["min_slack_s"] == 120 and ms["pass_only_alternative_s"] == 15
+    left = r.money_left(ss, 120, 0.1)  # critical + slack<120 tasks are excluded: 3 of 4
+    assert left["excluded_tasks"] == 3 and left["money_left_on_table_usd"] == round(3 * 0.18, 4)

@@ -1,0 +1,276 @@
+{
+  "config": {
+    "run_dir": "C:\\Users\\CWogu\\source\\repos\\superlite-bench-runs\\combo-superlite-x1",
+    "commit": "533bf3c8e0e6b4db407d708fc28665b53dcee2e8",
+    "tasks": [
+      "T8"
+    ],
+    "selected_because": "marked `Kind: mechanical` in the plan",
+    "n": 3,
+    "models": [
+      "haiku"
+    ],
+    "primes": [
+      "full",
+      "mini"
+    ],
+    "cost_cap_usd": 1.5,
+    "timeout_s": 300,
+    "verify": "uv run --no-project --with pytest python -m pytest {tests} -q -p no:cacheprovider",
+    "hidden": "C:\\Users\\CWogu\\source\\repos\\superlite\\bench\\tasks\\combo\\hidden",
+    "setup": "",
+    "per_run_cap_usd": {
+      "haiku": 0.25,
+      "sonnet": 1.0
+    },
+    "out": "bench\\results\\mechanical-ab-prime-size-x1"
+  },
+  "wall_s": 84.0,
+  "total_cost_usd": 0.0559,
+  "table": [
+    {
+      "task": "T8",
+      "model": "haiku",
+      "prime": "full",
+      "runs": 3,
+      "median_prime_tokens": 4648,
+      "median_first_tool_s": 0.5,
+      "passed": 3,
+      "pass_rate": 1.0,
+      "median_s": 71.3,
+      "median_cost_usd": 0.01,
+      "median_tool_calls": 12,
+      "median_out_tokens": 8667,
+      "median_ctx_tokens": 234147,
+      "failures": []
+    },
+    {
+      "task": "T8",
+      "model": "haiku",
+      "prime": "mini",
+      "runs": 3,
+      "median_prime_tokens": 1027,
+      "median_first_tool_s": 0.4,
+      "passed": 3,
+      "pass_rate": 1.0,
+      "median_s": 62.7,
+      "median_cost_usd": 0.01,
+      "median_tool_calls": 9,
+      "median_out_tokens": 7830,
+      "median_ctx_tokens": 119914,
+      "failures": []
+    }
+  ],
+  "runs": [
+    {
+      "task": "T8",
+      "model": "haiku",
+      "prime": "full",
+      "rep": 1,
+      "budget_usd": 0.25,
+      "prime_tokens_est": 4648,
+      "pid": 1360,
+      "timed_out": false,
+      "duration_s": 70.0,
+      "first_tool_s": 0.5,
+      "tokens": {
+        "in": 22,
+        "out": 7706,
+        "cache_read": 212258,
+        "cache_write": 21867
+      },
+      "cost_usd": 0.0104,
+      "tool_calls": 10,
+      "turns": 11,
+      "subtype": "success",
+      "status": "DONE",
+      "reply": "Status: DONE Files changed: - `src/minisheet/refs.py` (stubs replaced with `parse_ref`, `parse_range`, `to_a1`, plus private helpers; `Ref` unchanged) - `tests/minisheet/test_refs.py` (new) Test command: `bash \"$SL\" run_tests --fast tests/m",
+      "models": [
+        "claude-haiku-5-5"
+      ],
+      "own_ok": true,
+      "own_tail": "16 passed in 0.04s",
+      "hidden_total": 6,
+      "hidden_passed": 6,
+      "hidden_failed": [],
+      "out_of_scope": [],
+      "passed": true,
+      "fail_reason": null
+    },
+    {
+      "task": "T8",
+      "model": "haiku",
+      "prime": "full",
+      "rep": 2,
+      "budget_usd": 0.25,
+      "prime_tokens_est": 4648,
+      "pid": 47436,
+      "timed_out": false,
+      "duration_s": 77.3,
+      "first_tool_s": 0.4,
+      "tokens": {
+        "in": 26,
+        "out": 8667,
+        "cache_read": 273499,
+        "cache_write": 24000
+      },
+      "cost_usd": 0.0119,
+      "tool_calls": 12,
+      "turns": 13,
+      "subtype": "success",
+      "status": "DONE",
+      "reply": "Status: DONE Files changed: - src/minisheet/refs.py - tests/minisheet/test_refs.py Test command: `bash \"$SL\" run_tests --fast tests/minisheet/test_refs.py --background`, then `run_tests --wait`. Result: `passed: 17, failed: 0, skipped: 0`. ",
+      "models": [
+        "claude-haiku-5-5"
+      ],
+      "own_ok": true,
+      "own_tail": "17 passed in 0.03s",
+      "hidden_total": 6,
+      "hidden_passed": 6,
+      "hidden_failed": [],
+      "out_of_scope": [],
+      "passed": true,
+      "fail_reason": null
+    },
+    {
+      "task": "T8",
+      "model": "haiku",
+      "prime": "full",
+      "rep": 3,
+      "budget_usd": 0.25,
+      "prime_tokens_est": 4648,
+      "pid": 13100,
+      "timed_out": false,
+      "duration_s": 71.3,
+      "first_tool_s": 0.5,
+      "tokens": {
+        "in": 16,
+        "out": 8820,
+        "cache_read": 151747,
+        "cache_write": 23868
+      },
+      "cost_usd": 0.0107,
+      "tool_calls": 12,
+      "turns": 13,
+      "subtype": "success",
+      "status": "DONE",
+      "reply": "Status: DONE Files changed: - `src/minisheet/refs.py` - `tests/minisheet/test_refs.py` (new) Test command: `sl run_tests --fast tests/minisheet/test_refs.py --background`, then `sl run_tests --wait`. Result: `\"passed\": 13, \"failed\": 0`. Bef",
+      "models": [
+        "claude-haiku-5-5"
+      ],
+      "own_ok": true,
+      "own_tail": "13 passed in 0.03s",
+      "hidden_total": 6,
+      "hidden_passed": 6,
+      "hidden_failed": [],
+      "out_of_scope": [],
+      "passed": true,
+      "fail_reason": null
+    },
+    {
+      "task": "T8",
+      "model": "haiku",
+      "prime": "mini",
+      "rep": 1,
+      "budget_usd": 0.25,
+      "prime_tokens_est": 1027,
+      "pid": 5508,
+      "timed_out": false,
+      "duration_s": 69.8,
+      "first_tool_s": 0.4,
+      "tokens": {
+        "in": 16,
+        "out": 8350,
+        "cache_read": 105444,
+        "cache_write": 14454
+      },
+      "cost_usd": 0.0081,
+      "tool_calls": 9,
+      "turns": 10,
+      "subtype": "success",
+      "status": "DONE",
+      "reply": "Status: DONE Files changed: - src/minisheet/refs.py (replaced the three NotImplementedError stubs; `Ref` and `__all__` unchanged) - tests/minisheet/test_refs.py (new) Test command: `bash \"$SL\" run_tests --fast tests/minisheet/test_refs.py` ",
+      "models": [
+        "claude-haiku-5-5"
+      ],
+      "own_ok": true,
+      "own_tail": "17 passed in 0.04s",
+      "hidden_total": 6,
+      "hidden_passed": 6,
+      "hidden_failed": [],
+      "out_of_scope": [],
+      "passed": true,
+      "fail_reason": null
+    },
+    {
+      "task": "T8",
+      "model": "haiku",
+      "prime": "mini",
+      "rep": 2,
+      "budget_usd": 0.25,
+      "prime_tokens_est": 1027,
+      "pid": 42452,
+      "timed_out": false,
+      "duration_s": 59.6,
+      "first_tool_s": 0.7,
+      "tokens": {
+        "in": 16,
+        "out": 6451,
+        "cache_read": 102315,
+        "cache_write": 13379
+      },
+      "cost_usd": 0.0069,
+      "tool_calls": 8,
+      "turns": 9,
+      "subtype": "success",
+      "status": "DONE",
+      "reply": "Status: DONE Files changed: - src/minisheet/refs.py (implemented `parse_ref`, `parse_range`, `to_a1`; `Ref` and `__all__` unchanged) - tests/minisheet/test_refs.py (new; 28 tests covering the B\u00a71 table, prose rules, and the three Review Foc",
+      "models": [
+        "claude-haiku-5-5"
+      ],
+      "own_ok": true,
+      "own_tail": "28 passed in 0.04s",
+      "hidden_total": 6,
+      "hidden_passed": 6,
+      "hidden_failed": [],
+      "out_of_scope": [],
+      "passed": true,
+      "fail_reason": null
+    },
+    {
+      "task": "T8",
+      "model": "haiku",
+      "prime": "mini",
+      "rep": 3,
+      "budget_usd": 0.25,
+      "prime_tokens_est": 1027,
+      "pid": 25924,
+      "timed_out": false,
+      "duration_s": 62.7,
+      "first_tool_s": 0.2,
+      "tokens": {
+        "in": 18,
+        "out": 7830,
+        "cache_read": 115567,
+        "cache_write": 13984
+      },
+      "cost_usd": 0.0079,
+      "tool_calls": 10,
+      "turns": 11,
+      "subtype": "success",
+      "status": "DONE",
+      "reply": "Status: DONE Files changed: - src/minisheet/refs.py - tests/minisheet/test_refs.py Test command and result: `bash \"$SL\" run_tests --fast tests/minisheet/test_refs.py`, then `run_tests --wait`: passed 16, failed 0, skipped 0. Before the impl",
+      "models": [
+        "claude-haiku-5-5"
+      ],
+      "own_ok": true,
+      "own_tail": "16 passed in 0.03s",
+      "hidden_total": 6,
+      "hidden_passed": 6,
+      "hidden_failed": [],
+      "out_of_scope": [],
+      "passed": true,
+      "fail_reason": null
+    }
+  ]
+}

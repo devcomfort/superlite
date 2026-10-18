@@ -98,6 +98,37 @@ def brief_for(task, root: Path) -> str:
             f".superlite/brief.md (verify command, 200-word reply format). Do not commit.")
 
 
+def section(text: str, head_re: str, level: str = "##") -> str:
+    """The `head_re` heading's block up to the next heading of the same or a higher level."""
+    m = re.search(rf"^{level} +{head_re}.*$", text, re.M)
+    if not m:
+        return ""
+    rest = text[m.end():]
+    nxt = re.search(rf"^#{{1,{len(level)}}} ", rest, re.M)
+    return m.group(0) + (rest[:nxt.start()] if nxt else rest)
+
+
+def mini_prime(plan, task, dest: Path) -> str:
+    """3-5k tokens for a Haiku agent: the plan's goal/constraints, this task's block, the stub files it owns and the
+    SPEC sections it cites (`A§n` / `B§n`, Part A / Part B headings) instead of the whole plan."""
+    text = plan.to_text()
+    parts = ["# superlite mini prime (this task only)", chr(10).join(text.splitlines()[:8]), section(text, "Global constraints")]
+    parts.append(f"## Your task block{chr(10)}{chr(10)}{task.text.strip()}")
+    for p in task.owned_sources:
+        f = dest / p
+        if f.is_file():
+            parts.append(f"## Stub: {p}{chr(10)}```{chr(10)}{f.read_text(encoding='utf-8')}{chr(10)}```")
+    spec = dest / "SPEC.md"
+    if spec.is_file():
+        st = spec.read_text(encoding="utf-8")
+        for part, n in dict.fromkeys(re.findall(r"([AB])§(\d+)", task.text)):
+            body = section(st, f"Part {part}:", "#")
+            sec = section(body, rf"{n}\.", "##")
+            if sec:
+                parts.append(f"## SPEC Part {part} section {n}\n\n{sec.strip()}")
+    return (chr(10) * 2).join(x for x in parts if x.strip()) + chr(10)
+
+
 def default_verify(root: Path) -> tuple[str, str]:
     if (root / "package.json").is_file():
         return "npx vitest run {tests}", "npm install --no-audit --no-fund"
@@ -105,7 +136,7 @@ def default_verify(root: Path) -> tuple[str, str]:
 
 
 # ---- one run -------------------------------------------------------------------------------------
-def prepare(run_dir: Path, commit: str, dest: Path, setup: str) -> None:
+def prepare(run_dir: Path, commit: str, dest: Path, setup: str, mini: tuple | None = None) -> None:
     subprocess.run(["git", "clone", "--quiet", "--no-hardlinks", str(run_dir), str(dest)], check=True, capture_output=True)
     subprocess.run(["git", "checkout", "--quiet", commit], cwd=dest, check=True, capture_output=True)
     sl = run_dir / ".superlite"
@@ -113,6 +144,9 @@ def prepare(run_dir: Path, commit: str, dest: Path, setup: str) -> None:
         if (sl / name).is_file():
             (dest / ".superlite").mkdir(exist_ok=True)
             shutil.copy2(sl / name, dest / ".superlite" / name)
+    if mini:  # (plan, task): replace the full prime with the task's mini prime
+        (dest / ".superlite").mkdir(exist_ok=True)
+        (dest / ".superlite" / "prime.md").write_text(mini_prime(*mini, dest), encoding="utf-8")
     if setup:
         subprocess.run(setup, cwd=dest, shell=True, capture_output=True, env=harness.with_node(harness.clean_env()), timeout=600)
 
@@ -176,14 +210,16 @@ def score(dest: Path, task, verify: str, hidden: Path | None) -> dict:
 
 def execute(job: dict) -> dict:
     task, model, k, dest, budget = job["task"], job["model"], job["k"], job["dest"], job["budget"]
-    log = job["out"] / f"{task.id}-{model}-{k}.jsonl"
-    rec = {"task": task.id, "model": model, "rep": k, "budget_usd": round(budget, 3)}
+    tag = f"{task.id}-{model}-{job['prime']}-{k}"
+    log = job["out"] / f"{tag}.jsonl"
+    rec = {"task": task.id, "model": model, "prime": job["prime"], "rep": k, "budget_usd": round(budget, 3)}
     try:
-        prepare(job["run_dir"], job["commit"], dest, job["setup"])
+        prepare(job["run_dir"], job["commit"], dest, job["setup"], (job["plan"], task) if job["prime"] == "mini" else None)
+        rec["prime_tokens_est"] = len((dest / ".superlite" / "prime.md").read_text(encoding="utf-8")) // 4 if (dest / ".superlite" / "prime.md").is_file() else 0
         cmd = claude_cmd(model, brief_for(task, dest), budget)
         job["gate"]()  # last look at `ps` right before the launch
         t0 = time.time()
-        with log.open("w", encoding="utf-8") as lf, (job["out"] / f"{task.id}-{model}-{k}.stderr").open("w") as ef:
+        with log.open("w", encoding="utf-8") as lf, (job["out"] / f"{tag}.stderr").open("w") as ef:
             proc = subprocess.Popen(cmd, cwd=dest, stdout=lf, stderr=ef, stdin=subprocess.DEVNULL, env=harness.arm_env(),
                                     creationflags=0 if os.name != "nt" else subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW,
                                     start_new_session=os.name != "nt")
@@ -203,6 +239,10 @@ def execute(job: dict) -> dict:
         tok = {"in": sum(u.get("inputTokens", 0) for u in mu.values()), "out": sum(u.get("outputTokens", 0) for u in mu.values()),
                "cache_read": sum(u.get("cacheReadInputTokens", 0) for u in mu.values()),
                "cache_write": sum(u.get("cacheCreationInputTokens", 0) for u in mu.values())}
+        stamps = [mechanical._ts(e) for e in events if mechanical._ts(e) is not None]
+        first_tool = next((mechanical._ts(e) for e in events if e.get("type") == "assistant" and mechanical._ts(e) is not None and any(
+            b.get("type") == "tool_use" for b in (e.get("message") or {}).get("content") or [])), None)
+        rec["first_tool_s"] = round(first_tool - min(stamps), 1) if first_tool is not None and stamps else None  # launch -> first tool call
         calls = {b.get("id") for e in events if e.get("type") == "assistant"
                  for b in (e.get("message") or {}).get("content") or [] if b.get("type") == "tool_use"}
         text = r.get("result") or ""
@@ -242,12 +282,12 @@ def fail_reason(r: dict) -> str:
 def aggregate(runs: list[dict]) -> list[dict]:
     rows = []
     for tid in sorted({r["task"] for r in runs}, key=lambda t: int(re.sub(r"\D", "", t) or 0)):
-        for model in ("haiku", "sonnet"):
-            rs = [r for r in runs if r["task"] == tid and r["model"] == model]
-            if not rs:
-                continue
+        for model, prime in sorted({(r["model"], r.get("prime", "full")) for r in runs if r["task"] == tid}, key=lambda x: (x[0] != "haiku", x[1])):
+            rs = [r for r in runs if r["task"] == tid and r["model"] == model and r.get("prime", "full") == prime]
             med = lambda f: round(statistics.median([x for x in map(f, rs) if x is not None]), 2) if any(f(x) is not None for x in rs) else None  # noqa: E731
-            rows.append({"task": tid, "model": model, "runs": len(rs), "passed": sum(r["passed"] for r in rs),
+            rows.append({"task": tid, "model": model, "prime": prime, "runs": len(rs),
+                         "median_prime_tokens": med(lambda r: r.get("prime_tokens_est")),
+                         "median_first_tool_s": med(lambda r: r.get("first_tool_s")), "passed": sum(r["passed"] for r in rs),
                          "pass_rate": round(sum(r["passed"] for r in rs) / len(rs), 2),
                          "median_s": med(lambda r: r.get("duration_s")), "median_cost_usd": med(lambda r: r.get("cost_usd")),
                          "median_tool_calls": med(lambda r: r.get("tool_calls")),
@@ -258,11 +298,11 @@ def aggregate(runs: list[dict]) -> list[dict]:
 
 
 def render(rows: list[dict], total_cost: float, cap: float) -> str:
-    cols = ["task", "model", "pass", "median s", "median $", "tools", "out tok", "ctx tok", "failures"]
+    cols = ["task", "model", "prime", "pass", "1st tool s", "prime tok", "median s", "median $", "tools", "out tok", "ctx tok", "failures"]
     lines = ["| " + " | ".join(cols) + " |", "|" + "---|" * len(cols)]
     for r in rows:
         lines.append("| " + " | ".join(str(x) for x in (
-            r["task"], r["model"], f"{r['passed']}/{r['runs']}", r["median_s"], r["median_cost_usd"], r["median_tool_calls"],
+            r["task"], r["model"], r["prime"], f"{r['passed']}/{r['runs']}", r["median_first_tool_s"], r["median_prime_tokens"], r["median_s"], r["median_cost_usd"], r["median_tool_calls"],
             r["median_out_tokens"], r["median_ctx_tokens"], "; ".join(r["failures"]) or "-")) + " |")
     lines.append(f"\nTotal spend ${total_cost:.2f} (cap ${cap:.2f}). Medians over the runs of each cell; 'ctx tok' = input + cache read + cache write.")
     return "\n".join(lines)
@@ -273,6 +313,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("run_dir", type=Path)
     ap.add_argument("--tasks", help="comma-separated task ids (default: plan tasks marked Kind: mechanical)")
     ap.add_argument("--n", type=int, default=3)
+    ap.add_argument("--models", default="haiku,sonnet", help="comma-separated: haiku, sonnet")
+    ap.add_argument("--prime", default="full", help="full (the run's .superlite/prime.md), mini (task-only prime) or full,mini (both arms)")
     ap.add_argument("--cost-cap", type=float, default=2.0)
     ap.add_argument("--timeout", type=int, default=300)
     ap.add_argument("--commit")
@@ -297,9 +339,10 @@ def main(argv: list[str] | None = None) -> int:
     verify, setup = a.verify or default_v, a.setup if a.setup is not None else default_s
     hidden = a.hidden or (harness.TASK_HIDDEN if harness.TASK_HIDDEN.is_dir() else None)
     out = a.out or harness.RESULTS / f"mechanical-ab-{run_dir.name}-{time.strftime('%Y%m%d-%H%M%S')}"
-    combos = [(t, m, k) for t in tasks for m in ("haiku", "sonnet") for k in range(1, a.n + 1)]
-    unit = a.cost_cap / sum(WEIGHT[m] for _, m, _ in combos)
-    plan_txt = {"run_dir": str(run_dir), "commit": commit, "tasks": [t.id for t in tasks], "selected_because": why, "n": a.n,
+    models, primes = a.models.split(","), a.prime.split(",")
+    combos = [(t, m, pr, k) for t in tasks for m in models for pr in primes for k in range(1, a.n + 1)]
+    unit = a.cost_cap / sum(WEIGHT[m] for _, m, _, _ in combos)
+    plan_txt = {"run_dir": str(run_dir), "commit": commit, "tasks": [t.id for t in tasks], "selected_because": why, "n": a.n, "models": models, "primes": primes,
                 "cost_cap_usd": a.cost_cap, "timeout_s": a.timeout, "verify": verify, "hidden": str(hidden), "setup": setup,
                 "per_run_cap_usd": {m: round(unit * w, 3) for m, w in WEIGHT.items()}, "out": str(out)}
     if a.dry_run:
@@ -316,9 +359,9 @@ def main(argv: list[str] | None = None) -> int:
     gate()
     out.mkdir(parents=True, exist_ok=True)
     work = Path(tempfile.mkdtemp(prefix="mech-ab-"))
-    jobs = [{"task": t, "model": m, "k": k, "dest": work / f"{t.id}-{m}-{k}", "budget": unit * WEIGHT[m], "out": out,
+    jobs = [{"task": t, "model": m, "k": k, "prime": pr, "plan": plan, "dest": work / f"{t.id}-{m}-{pr}-{k}", "budget": unit * WEIGHT[m], "out": out,
              "run_dir": run_dir, "commit": commit, "verify": verify, "hidden": hidden, "setup": setup,
-             "timeout": a.timeout, "gate": gate} for t, m, k in combos]
+             "timeout": a.timeout, "gate": gate} for t, m, pr, k in combos]
     t0 = time.time()
     with ThreadPoolExecutor(max_workers=len(jobs)) as ex:
         runs = list(ex.map(execute, jobs))

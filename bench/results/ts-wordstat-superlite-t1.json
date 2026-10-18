@@ -114,5 +114,17 @@
   "robust_failed_ids": [],
   "robust_by_file": {
     "test.ts": "3/3"
+  },
+  "mechanical": {
+    "plan_tasks": null,
+    "plan_mechanical": null,
+    "tasks_built": 0,
+    "by_kind": {},
+    "by_model": {},
+    "mechanical_by_model": {},
+    "haiku": null,
+    "counterfactual_sonnet": null,
+    "other_haiku_dispatches": [],
+    "note": "no Haiku tasks in this run"
   }
 }

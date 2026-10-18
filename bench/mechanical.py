@@ -121,6 +121,10 @@ def segments(events: list[dict]) -> list[dict]:
             models[family(rec["model"]) or "?"] = models.get(family(rec["model"]) or "?", 0) + 1
         fam = max((m for m in models if m != "?"), key=models.get, default=None) \
             or ("haiku" if "haiku" in (s.get("subagent_type") or "") else None)
+        first_tool = next((_ts(e) for e in mine if e.get("type") == "assistant" and _ts(e) is not None
+                           and any(b.get("type") == "tool_use" for b in (e.get("message") or {}).get("content") or [])), None)
+        first = next(iter(by_msg.values()), None)
+        fu = (first or {}).get("u") or {}
         text = ""
         if note:
             text = (note.get("handback_report") or {}).get("text") or ""
@@ -146,6 +150,12 @@ def segments(events: list[dict]) -> list[dict]:
             "start_s": round(rel[i], 1),
             "end_s": round(rel[max(stamped)] if stamped else rel[end - 1], 1),
             "tokens": tok, "tool_calls": len(calls), "api_calls": len(by_msg),
+            "first_tool_s": round(first_tool - t0 - rel[i], 1) if first_tool is not None else None,  # dispatch -> first tool call
+            "first_call_ctx": (fu.get("input_tokens") or 0) + (fu.get("cache_read_input_tokens") or 0)
+                              + (fu.get("cache_creation_input_tokens") or 0) if first else None,
+            "first_call_cache_write": fu.get("cache_creation_input_tokens") or 0 if first else None,
+            "first_call_cache_read": fu.get("cache_read_input_tokens") or 0 if first else None,
+            "first_call_family": family(first["model"]) if first else None,
         })
     # an agent's prime and untagged segments belong to the task id its other segments name
     default: dict[str, str] = {}
@@ -189,8 +199,30 @@ def _topo_forward(order, deps, dur, lag, start0):
     return done
 
 
+def planned_tier(task, prompt_head: str, rules: dict | None, kind: str | None) -> tuple[str, str]:
+    """(tier, source): `tier=` on the dispatch line, else the routing rules (routing-recommendation.json
+    `rules`: first band whose bounds all hold wins), else Kind (mechanical -> haiku, else sonnet)."""
+    m = re.search(r"\btier[=:]\s*(haiku|sonnet|opus)", prompt_head or "", re.I)
+    if m:
+        return m.group(1).lower(), "dispatch"
+    f = task.explicit_features
+    for rule in (rules or {}).get("table") or []:
+        w = rule.get("when") or {}
+        if (f.get("loc", 0) <= w.get("loc_max", 10**9) and f.get("components", 1) <= w.get("components_max", 10**9)
+                and (not w.get("tests") or f.get("tests", "fast") == w["tests"])
+                and (kind == "mechanical" or not w.get("kind_mechanical"))):
+            return rule["tier"], "rules"
+    return ("haiku" if kind == "mechanical" else "sonnet"), "kind"
+
+
+def load_rules(path: Path | None) -> dict | None:
+    if path and Path(path).is_file():
+        return json.loads(Path(path).read_text(encoding="utf-8")).get("rules")
+    return None
+
+
 def task_metrics(events: list[dict], base: list[dict], plan, graph: dict, run_dir: Path | None,
-                 prices: dict) -> list[dict]:
+                 prices: dict, tier_rules: dict | None = None) -> list[dict]:
     """Extend the base task records (task_records) with the per-run measurements. `plan` is a
     plan_tools.Plan, `graph` its parse_taskgraph result ({} when the plan has none)."""
     segs = segments(events)
@@ -214,6 +246,11 @@ def task_metrics(events: list[dict], base: list[dict], plan, graph: dict, run_di
                     fixes.append(s)
         fam = (real[0]["family"] if real else None) or family(r.get("model"))
         r["model_plan"] = r.get("model")
+        r["agent"] = real[0]["agent"] if real else None
+        r["agent_model_used"] = fam
+        r["tier_planned"], r["tier_source"] = planned_tier(plan.by_id[tid], real[0]["prompt_head"] if real else "", tier_rules, r.get("kind"))
+        r["pool_violation"] = bool(fam and ((r["tier_planned"] == "haiku" and fam != "haiku")
+                                            or (r["tier_planned"] == "sonnet" and fam == "haiku")))
         r["model"] = fam or r.get("model")
         r["dispatches"] = len(real)
         r["start_s"] = min((s["start_s"] for s in real), default=None)
@@ -286,6 +323,9 @@ def task_metrics(events: list[dict], base: list[dict], plan, graph: dict, run_di
     for t, r in recs.items():
         if t not in known:
             r.update({"start_lag_s": None, "slack_s": None, "on_critical_path": None})
+    for r in recs.values():  # a Haiku agent on a critical-path task is a pool violation of its own type
+        r["haiku_on_critical_path"] = bool(r.get("model") == "haiku" and r.get("on_critical_path"))
+        r["pool_violation"] = bool(r.get("pool_violation") or r["haiku_on_critical_path"])
     return sorted(recs.values(), key=lambda r: [int(x) for x in re.findall(r"\d+", r["task"])])
 
 
@@ -315,6 +355,24 @@ def mechanical_block(tasks: list[dict], graph: dict, prices: dict, speeds: dict,
         "tasks_built": n, "by_kind": share("kind"), "by_model": share("model"),
         "mechanical_by_model": {}, "haiku": None, "counterfactual_sonnet": None,
         "other_haiku_dispatches": other_haiku or [],
+    }
+    by_agent: dict[str, list[str]] = {}
+    for t in tasks:
+        if t.get("agent") and t.get("model") == "haiku":
+            by_agent.setdefault(t["agent"], []).append(t["task"])
+    lags: dict[str, list[float]] = {}
+    for t in tasks:
+        if t.get("start_lag_s") is not None:
+            lags.setdefault(str(t["model"]), []).append(t["start_lag_s"])
+    block["pool"] = {
+        "pool_violations": sum(1 for t in tasks if t.get("pool_violation")),
+        "haiku_on_critical_path": sum(1 for t in tasks if t.get("haiku_on_critical_path")),
+        "haiku_on_critical_path_tasks": [t["task"] for t in tasks if t.get("haiku_on_critical_path")],
+        "violating_tasks": [t["task"] for t in tasks if t.get("pool_violation")],
+        "tier_sources": sorted({t.get("tier_source") for t in tasks if t.get("tier_source")}),
+        "haiku_agents": len(by_agent), "haiku_tasks_per_agent": {a: ts for a, ts in by_agent.items()},
+        "haiku_lane_reuse": sum(len(v) - 1 for v in by_agent.values()),
+        "start_lag_s_by_model": {m: {"n": len(v), "mean": round(sum(v) / len(v), 1), "max": max(v)} for m, v in lags.items()},
     }
     for t in mech:
         o = block["mechanical_by_model"].setdefault(str(t["model"]), {"tasks": 0, "time_s": 0.0, "cost_usd": 0.0})

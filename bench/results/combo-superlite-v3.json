@@ -350,6 +350,11 @@
       "model": "sonnet",
       "actual_s": 476.5,
       "model_plan": "sonnet",
+      "agent": "a9f9457a8ebbba324",
+      "agent_model_used": "sonnet",
+      "tier_planned": "sonnet",
+      "tier_source": "kind",
+      "pool_violation": false,
       "dispatches": 1,
       "start_s": 281.9,
       "end_s": 358.7,
@@ -377,7 +382,8 @@
       "done_s": 358.7,
       "start_lag_s": null,
       "slack_s": 364.8,
-      "on_critical_path": false
+      "on_critical_path": false,
+      "haiku_on_critical_path": false
     },
     {
       "task": "T2",
@@ -388,6 +394,11 @@
       "model": "sonnet",
       "actual_s": 177.3,
       "model_plan": "sonnet",
+      "agent": "af975c45683184e7a",
+      "agent_model_used": "sonnet",
+      "tier_planned": "sonnet",
+      "tier_source": "kind",
+      "pool_violation": false,
       "dispatches": 1,
       "start_s": 281.9,
       "end_s": 332.9,
@@ -415,7 +426,8 @@
       "done_s": 332.9,
       "start_lag_s": null,
       "slack_s": 390.6,
-      "on_critical_path": false
+      "on_critical_path": false,
+      "haiku_on_critical_path": false
     },
     {
       "task": "T3",
@@ -426,6 +438,11 @@
       "model": "sonnet",
       "actual_s": 83.2,
       "model_plan": "sonnet",
+      "agent": "abaae0e1b8031806a",
+      "agent_model_used": "sonnet",
+      "tier_planned": "sonnet",
+      "tier_source": "kind",
+      "pool_violation": false,
       "dispatches": 1,
       "start_s": 281.9,
       "end_s": 368.6,
@@ -453,7 +470,8 @@
       "done_s": 368.6,
       "start_lag_s": null,
       "slack_s": 354.9,
-      "on_critical_path": false
+      "on_critical_path": false,
+      "haiku_on_critical_path": false
     },
     {
       "task": "T4",
@@ -464,6 +482,11 @@
       "model": "sonnet",
       "actual_s": 62.6,
       "model_plan": "sonnet",
+      "agent": "a96e701a2030364db",
+      "agent_model_used": "sonnet",
+      "tier_planned": "sonnet",
+      "tier_source": "kind",
+      "pool_violation": false,
       "dispatches": 1,
       "start_s": 281.9,
       "end_s": 348.4,
@@ -491,7 +514,8 @@
       "done_s": 348.4,
       "start_lag_s": null,
       "slack_s": 375.1,
-      "on_critical_path": false
+      "on_critical_path": false,
+      "haiku_on_critical_path": false
     },
     {
       "task": "T6",
@@ -502,6 +526,11 @@
       "model": "sonnet",
       "actual_s": 480.4,
       "model_plan": "sonnet",
+      "agent": "aa599408ac05849fd",
+      "agent_model_used": "sonnet",
+      "tier_planned": "sonnet",
+      "tier_source": "kind",
+      "pool_violation": false,
       "dispatches": 1,
       "start_s": 281.9,
       "end_s": 404.6,
@@ -529,7 +558,8 @@
       "done_s": 404.6,
       "start_lag_s": null,
       "slack_s": 22.0,
-      "on_critical_path": false
+      "on_critical_path": false,
+      "haiku_on_critical_path": false
     },
     {
       "task": "T7",
@@ -540,6 +570,11 @@
       "model": "sonnet",
       "actual_s": 140.9,
       "model_plan": "sonnet",
+      "agent": "a7c1eb352f8b5dbff",
+      "agent_model_used": "sonnet",
+      "tier_planned": "sonnet",
+      "tier_source": "kind",
+      "pool_violation": false,
       "dispatches": 1,
       "start_s": 281.9,
       "end_s": 426.6,
@@ -567,7 +602,8 @@
       "done_s": 426.6,
       "start_lag_s": null,
       "slack_s": 0.0,
-      "on_critical_path": false
+      "on_critical_path": false,
+      "haiku_on_critical_path": false
     },
     {
       "task": "T8",
@@ -578,6 +614,11 @@
       "model": "opus",
       "actual_s": 228.4,
       "model_plan": "opus",
+      "agent": "a23ad47cfb91e7f4f",
+      "agent_model_used": "opus",
+      "tier_planned": "sonnet",
+      "tier_source": "kind",
+      "pool_violation": false,
       "dispatches": 1,
       "start_s": 448.6,
       "end_s": 681.1,
@@ -605,7 +646,8 @@
       "done_s": 681.1,
       "start_lag_s": 22.0,
       "slack_s": 42.4,
-      "on_critical_path": false
+      "on_critical_path": false,
+      "haiku_on_critical_path": false
     },
     {
       "task": "T11",
@@ -616,6 +658,11 @@
       "model": "sonnet",
       "actual_s": 252.6,
       "model_plan": "sonnet",
+      "agent": "aeeb5bd3b3493c864",
+      "agent_model_used": "sonnet",
+      "tier_planned": "sonnet",
+      "tier_source": "kind",
+      "pool_violation": false,
       "dispatches": 1,
       "start_s": 468.2,
       "end_s": 723.5,
@@ -643,7 +690,8 @@
       "done_s": 723.5,
       "start_lag_s": null,
       "slack_s": 0.0,
-      "on_critical_path": true
+      "on_critical_path": true,
+      "haiku_on_critical_path": false
     }
   ],
   "mechanical": {
@@ -676,6 +724,25 @@
     "haiku": null,
     "counterfactual_sonnet": null,
     "other_haiku_dispatches": [],
+    "pool": {
+      "pool_violations": 0,
+      "haiku_on_critical_path": 0,
+      "haiku_on_critical_path_tasks": [],
+      "violating_tasks": [],
+      "tier_sources": [
+        "kind"
+      ],
+      "haiku_agents": 0,
+      "haiku_tasks_per_agent": {},
+      "haiku_lane_reuse": 0,
+      "start_lag_s_by_model": {
+        "opus": {
+          "n": 1,
+          "mean": 22.0,
+          "max": 22.0
+        }
+      }
+    },
     "note": "no Haiku tasks in this run"
   }
 }

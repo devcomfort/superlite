@@ -1,0 +1,977 @@
+{
+  "recommendation": {
+    "generated_from": "bench/routing_evidence.py",
+    "evidence_summary": {
+      "haiku_samples": 10,
+      "haiku_samples_all_on_task": "combo T8 (refs, 80 LOC, 1 component, fast tests, no hard Review Focus)",
+      "sonnet_design_samples": 30,
+      "ab_full_prime": {
+        "haiku": {
+          "n": 6,
+          "pass": 6,
+          "median_s": 78.7,
+          "median_cost_usd": 0.011,
+          "median_tool_calls": 12.0
+        },
+        "sonnet": {
+          "n": 3,
+          "pass": 3,
+          "median_s": 72.0,
+          "median_cost_usd": 0.115,
+          "median_tool_calls": 7
+        }
+      },
+      "prime_size_ab_haiku": {
+        "full": {
+          "n": 3,
+          "passed": 3,
+          "prime_tokens_est": 4648,
+          "median_s": 71.3,
+          "median_cost_usd": 0.011,
+          "median_tool_calls": 12,
+          "median_ctx_tokens": 234147
+        },
+        "mini": {
+          "n": 3,
+          "passed": 3,
+          "prime_tokens_est": 1027,
+          "median_s": 62.7,
+          "median_cost_usd": 0.008,
+          "median_tool_calls": 9,
+          "median_ctx_tokens": 119914
+        }
+      }
+    },
+    "rules": {
+      "table": [
+        {
+          "when": {
+            "loc_max": 100,
+            "components_max": 2,
+            "tests": "fast",
+            "kind_mechanical": true
+          },
+          "tier": "haiku",
+          "min_first_time_pass": 0.5,
+          "min_slack_s": 120,
+          "off_critical_path": true,
+          "evidence": "Haiku 9/9 pass on the one measured task (80 LOC; 6 full-prime + 3 mini-prime replays); nothing measured above 100 LOC"
+        }
+      ],
+      "default_tier": "sonnet",
+      "critical_path_rule": {
+        "applies": true,
+        "never_haiku_on_critical_path": true,
+        "min_slack_s": 120,
+        "note": "user ruling: Haiku only for mechanical tasks off the critical path; ties and unknown slack count as on-path"
+      },
+      "min_slack_s": {
+        "min_slack_s": 120,
+        "absorbs": "a median first-time miss (base penalty + fixer time), so a miss does not become run time",
+        "pass_only_alternative_s": 15,
+        "share_of_tasks_retained_proxy": {
+          "slack>0s": 0.64,
+          "slack>60s": 0.44,
+          "slack>120s": 0.44
+        },
+        "evidence": "Haiku pass case +6.7 s; median miss adds 100.7 s (fixer-sonnet); needing 107 s of slack to absorb a miss. Shares are over ALL tasks of finished combo runs (proxy: no finished run has Haiku-eligible tasks)."
+      },
+      "min_first_time_pass": {
+        "<=100": {
+          "value": 0.5,
+          "decidable": true,
+          "evidence": "9/9 first-time passes (Wilson 95% lower bound 0.701) vs required 0.5: sample is enough"
+        },
+        "101-150": {
+          "value": null,
+          "decidable": false,
+          "evidence": "NO HAIKU DATA in this band: no break-even can be anchored; use Sonnet until measured"
+        }
+      },
+      "reuse_limits": {
+        "haiku": {
+          "max_tasks_per_agent": 3,
+          "max_context_k": 40,
+          "basis": "POLICY, not measured: a Haiku agent holds about 27k context after one task (x1 T8 peak 26.7k)"
+        },
+        "sonnet": {
+          "max_tasks_per_agent": 4,
+          "max_context_k": 80,
+          "basis": "POLICY, not measured: Sonnet agents measured at 18-25k per task, none reused beyond 2 tasks"
+        }
+      },
+      "mini_prime": {
+        "haiku": "task block + Global constraints + stub files + cited SPEC sections; ~1.0k tokens measured on T8 vs 4.6k full; 3/3 pass, -12% time, -31% cost, -25% tool calls (n=3)"
+      }
+    },
+    "slack_analysis": {
+      "strict_mechanical_or_lint_eligible": {
+        "n": 3,
+        "runs": [
+          "combo-superlite-x1"
+        ],
+        "note": "all from killed run x1: no usable slack data"
+      },
+      "proxy_all_tasks": {
+        "per_run": {
+          "combo-superlite-v2": {
+            "n": 11,
+            "slack>0s": 0.455,
+            "slack>60s": 0.182,
+            "slack>120s": 0.182
+          },
+          "combo-superlite-v3": {
+            "n": 8,
+            "slack>0s": 0.75,
+            "slack>60s": 0.5,
+            "slack>120s": 0.5
+          },
+          "combo-superlite-w3": {
+            "n": 6,
+            "slack>0s": 0.833,
+            "slack>60s": 0.833,
+            "slack>120s": 0.833
+          }
+        },
+        "pooled": {
+          "n": 25,
+          "slack>0s": 0.64,
+          "slack>60s": 0.44,
+          "slack>120s": 0.44
+        },
+        "median_slack_s_of_off_path": 270.7
+      },
+      "proxy_only_loc_over_limit": {
+        "per_run": {
+          "combo-superlite-v2": {
+            "n": 6,
+            "slack>0s": 0.667,
+            "slack>60s": 0.167,
+            "slack>120s": 0.167
+          },
+          "combo-superlite-v3": {
+            "n": 4,
+            "slack>0s": 1.0,
+            "slack>60s": 0.75,
+            "slack>120s": 0.75
+          },
+          "combo-superlite-w3": {
+            "n": 4,
+            "slack>0s": 0.75,
+            "slack>60s": 0.75,
+            "slack>120s": 0.75
+          }
+        },
+        "pooled": {
+          "n": 14,
+          "slack>0s": 0.786,
+          "slack>60s": 0.5,
+          "slack>120s": 0.5
+        },
+        "median_slack_s_of_off_path": 312.8
+      },
+      "haiku_extra_s_pass_case": 6.7,
+      "miss_extra_s": 100.65,
+      "slack_needed_to_absorb_pass_s": 6.7,
+      "slack_needed_to_absorb_miss_s": 107.4
+    },
+    "money_left_on_table": {
+      "excluded_tasks": 3,
+      "money_left_on_table_usd": 0.2481,
+      "haiku_to_sonnet_cost_ratio": 0.096,
+      "ratio_basis": "A/B replay median cost, Haiku / Sonnet (full prime)",
+      "rows": [
+        {
+          "run": "combo-superlite-x1",
+          "task": "T5",
+          "ran_on": "sonnet",
+          "cost_usd": 0.130736,
+          "est_haiku_cost_usd": 0.0126,
+          "saved_usd": 0.1181
+        },
+        {
+          "run": "combo-superlite-x1",
+          "task": "T7",
+          "ran_on": "sonnet",
+          "cost_usd": 0.143807,
+          "est_haiku_cost_usd": 0.0138,
+          "saved_usd": 0.13
+        },
+        {
+          "run": "combo-superlite-x1",
+          "task": "T8",
+          "ran_on": "haiku",
+          "cost_usd": 0.006461,
+          "saved_usd": 0.0,
+          "note": "was on Haiku although on the critical path: a violation under the rule"
+        }
+      ],
+      "caveat": "x1 was killed: its critical-path flags are all ties, so every candidate there counts as excluded"
+    },
+    "economics": [
+      {
+        "band": "<=100",
+        "haiku_n": 10,
+        "observed": 9,
+        "first_time_pass": 9,
+        "wilson_95_lower": 0.701,
+        "misses": 0,
+        "cost_break_even_first_time_pass": 0.477,
+        "time_budget_break_even_secondary": {
+          "+15s": 0.918,
+          "+30s": 0.769,
+          "+60s": 0.47
+        },
+        "vs_sonnet": {
+          "full": {
+            "base_penalty_s": 6.7,
+            "cost_saved_per_task_usd": 0.104,
+            "usd_saved_per_extra_second": {
+              "+15s": 0.00693,
+              "+30s": 0.00347,
+              "+60s": 0.00173
+            },
+            "usd_per_second_at_base": 0.01552,
+            "break_even_first_time_pass": {
+              "+15s": 0.918,
+              "+30s": 0.769,
+              "+60s": 0.47
+            },
+            "expected_extra_s_at_pass_rate_0.9": 16.8,
+            "expected_cost_saved_at_pass_rate_0.9_usd": 0.0945
+          },
+          "mini": {
+            "base_penalty_s": -9.3,
+            "cost_saved_per_task_usd": 0.107,
+            "usd_saved_per_extra_second": {
+              "+15s": 0.00713,
+              "+30s": 0.00357,
+              "+60s": 0.00178
+            },
+            "usd_per_second_at_base": "not slower than Sonnet: saves cost and time",
+            "break_even_first_time_pass": {
+              "+15s": 0.759,
+              "+30s": 0.61,
+              "+60s": 0.311
+            },
+            "expected_extra_s_at_pass_rate_0.9": 0.8,
+            "expected_cost_saved_at_pass_rate_0.9_usd": 0.0975
+          }
+        },
+        "sonnet_reference": {
+          "median_s": 72.0,
+          "median_cost_usd": 0.115,
+          "n": 3
+        },
+        "miss_cost": {
+          "extra_s": 100.65,
+          "extra_usd": 0.095,
+          "basis": "median fixer-sonnet assignment in the transcripts (n=16); no Haiku miss has occurred"
+        },
+        "time_overflow_p": 0.0,
+        "min_first_time_pass": 0.5,
+        "decidable": true,
+        "evidence_note": "9/9 first-time passes (Wilson 95% lower bound 0.701) vs required 0.5: sample is enough"
+      },
+      {
+        "band": "101-150",
+        "haiku_n": 0,
+        "observed": 0,
+        "first_time_pass": 0,
+        "wilson_95_lower": null,
+        "misses": 0,
+        "min_first_time_pass": null,
+        "decidable": false,
+        "evidence_note": "NO HAIKU DATA in this band: no break-even can be anchored; use Sonnet until measured"
+      }
+    ],
+    "misses": {
+      "haiku_tasks": 10,
+      "failed_first_time": 0,
+      "by_reason": {},
+      "failures": [],
+      "unobserved": [
+        "combo-superlite-x1.mechanical T8"
+      ],
+      "rework_s": 0,
+      "rework_cost_usd": 0
+    },
+    "fixer_miss_cost": {
+      "n": 16,
+      "median_s": 100.65,
+      "median_cost_usd": 0.095
+    },
+    "start_lag_note": "start lag by model is reported per run by report_mechanical.py (pool block)"
+  },
+  "rules": {
+    "table": [
+      {
+        "when": {
+          "loc_max": 100,
+          "components_max": 2,
+          "tests": "fast",
+          "kind_mechanical": true
+        },
+        "tier": "haiku",
+        "min_first_time_pass": 0.5,
+        "min_slack_s": 120,
+        "off_critical_path": true,
+        "evidence": "Haiku 9/9 pass on the one measured task (80 LOC; 6 full-prime + 3 mini-prime replays); nothing measured above 100 LOC"
+      }
+    ],
+    "default_tier": "sonnet",
+    "critical_path_rule": {
+      "applies": true,
+      "never_haiku_on_critical_path": true,
+      "min_slack_s": 120,
+      "note": "user ruling: Haiku only for mechanical tasks off the critical path; ties and unknown slack count as on-path"
+    },
+    "min_slack_s": {
+      "min_slack_s": 120,
+      "absorbs": "a median first-time miss (base penalty + fixer time), so a miss does not become run time",
+      "pass_only_alternative_s": 15,
+      "share_of_tasks_retained_proxy": {
+        "slack>0s": 0.64,
+        "slack>60s": 0.44,
+        "slack>120s": 0.44
+      },
+      "evidence": "Haiku pass case +6.7 s; median miss adds 100.7 s (fixer-sonnet); needing 107 s of slack to absorb a miss. Shares are over ALL tasks of finished combo runs (proxy: no finished run has Haiku-eligible tasks)."
+    },
+    "min_first_time_pass": {
+      "<=100": {
+        "value": 0.5,
+        "decidable": true,
+        "evidence": "9/9 first-time passes (Wilson 95% lower bound 0.701) vs required 0.5: sample is enough"
+      },
+      "101-150": {
+        "value": null,
+        "decidable": false,
+        "evidence": "NO HAIKU DATA in this band: no break-even can be anchored; use Sonnet until measured"
+      }
+    },
+    "reuse_limits": {
+      "haiku": {
+        "max_tasks_per_agent": 3,
+        "max_context_k": 40,
+        "basis": "POLICY, not measured: a Haiku agent holds about 27k context after one task (x1 T8 peak 26.7k)"
+      },
+      "sonnet": {
+        "max_tasks_per_agent": 4,
+        "max_context_k": 80,
+        "basis": "POLICY, not measured: Sonnet agents measured at 18-25k per task, none reused beyond 2 tasks"
+      }
+    },
+    "mini_prime": {
+      "haiku": "task block + Global constraints + stub files + cited SPEC sections; ~1.0k tokens measured on T8 vs 4.6k full; 3/3 pass, -12% time, -31% cost, -25% tool calls (n=3)"
+    }
+  },
+  "bands": [
+    {
+      "feature": "loc",
+      "band": "<=100",
+      "model": "haiku",
+      "n": 10,
+      "n_observed_pass": 9,
+      "first_time_pass": 9,
+      "median_s": 70.65,
+      "median_cost_usd": 0.01,
+      "median_tool_calls": 10.5,
+      "note": ""
+    },
+    {
+      "feature": "loc",
+      "band": "<=100",
+      "model": "sonnet",
+      "n": 3,
+      "n_observed_pass": 3,
+      "first_time_pass": 3,
+      "median_s": 72.0,
+      "median_cost_usd": 0.115,
+      "median_tool_calls": 7,
+      "note": "n<5"
+    },
+    {
+      "feature": "loc",
+      "band": "<=100",
+      "model": "opus",
+      "n": 0,
+      "n_observed_pass": 0,
+      "first_time_pass": 0,
+      "median_s": null,
+      "median_cost_usd": null,
+      "median_tool_calls": null,
+      "note": "NO DATA"
+    },
+    {
+      "feature": "loc",
+      "band": "101-150",
+      "model": "haiku",
+      "n": 0,
+      "n_observed_pass": 0,
+      "first_time_pass": 0,
+      "median_s": null,
+      "median_cost_usd": null,
+      "median_tool_calls": null,
+      "note": "NO DATA"
+    },
+    {
+      "feature": "loc",
+      "band": "101-150",
+      "model": "sonnet",
+      "n": 2,
+      "n_observed_pass": 1,
+      "first_time_pass": 1,
+      "median_s": 40.65,
+      "median_cost_usd": 0.137,
+      "median_tool_calls": 6.0,
+      "note": "n<5"
+    },
+    {
+      "feature": "loc",
+      "band": "101-150",
+      "model": "opus",
+      "n": 0,
+      "n_observed_pass": 0,
+      "first_time_pass": 0,
+      "median_s": null,
+      "median_cost_usd": null,
+      "median_tool_calls": null,
+      "note": "NO DATA"
+    },
+    {
+      "feature": "loc",
+      "band": "151-300",
+      "model": "haiku",
+      "n": 0,
+      "n_observed_pass": 0,
+      "first_time_pass": 0,
+      "median_s": null,
+      "median_cost_usd": null,
+      "median_tool_calls": null,
+      "note": "NO DATA"
+    },
+    {
+      "feature": "loc",
+      "band": "151-300",
+      "model": "sonnet",
+      "n": 18,
+      "n_observed_pass": 13,
+      "first_time_pass": 12,
+      "median_s": 67.3,
+      "median_cost_usd": 0.204,
+      "median_tool_calls": 9.5,
+      "note": ""
+    },
+    {
+      "feature": "loc",
+      "band": "151-300",
+      "model": "opus",
+      "n": 0,
+      "n_observed_pass": 0,
+      "first_time_pass": 0,
+      "median_s": null,
+      "median_cost_usd": null,
+      "median_tool_calls": null,
+      "note": "NO DATA"
+    },
+    {
+      "feature": "loc",
+      "band": ">300",
+      "model": "haiku",
+      "n": 0,
+      "n_observed_pass": 0,
+      "first_time_pass": 0,
+      "median_s": null,
+      "median_cost_usd": null,
+      "median_tool_calls": null,
+      "note": "NO DATA"
+    },
+    {
+      "feature": "loc",
+      "band": ">300",
+      "model": "sonnet",
+      "n": 10,
+      "n_observed_pass": 10,
+      "first_time_pass": 8,
+      "median_s": 112.6,
+      "median_cost_usd": 0.27,
+      "median_tool_calls": 13.0,
+      "note": ""
+    },
+    {
+      "feature": "loc",
+      "band": ">300",
+      "model": "opus",
+      "n": 2,
+      "n_observed_pass": 2,
+      "first_time_pass": 2,
+      "median_s": 204.2,
+      "median_cost_usd": 0.66,
+      "median_tool_calls": 13.0,
+      "note": "n<5"
+    },
+    {
+      "feature": "components",
+      "band": "1",
+      "model": "haiku",
+      "n": 10,
+      "n_observed_pass": 9,
+      "first_time_pass": 9,
+      "median_s": 70.65,
+      "median_cost_usd": 0.01,
+      "median_tool_calls": 10.5,
+      "note": ""
+    },
+    {
+      "feature": "components",
+      "band": "1",
+      "model": "sonnet",
+      "n": 16,
+      "n_observed_pass": 12,
+      "first_time_pass": 11,
+      "median_s": 69.2,
+      "median_cost_usd": 0.141,
+      "median_tool_calls": 8.0,
+      "note": ""
+    },
+    {
+      "feature": "components",
+      "band": "1",
+      "model": "opus",
+      "n": 0,
+      "n_observed_pass": 0,
+      "first_time_pass": 0,
+      "median_s": null,
+      "median_cost_usd": null,
+      "median_tool_calls": null,
+      "note": "NO DATA"
+    },
+    {
+      "feature": "components",
+      "band": "2",
+      "model": "haiku",
+      "n": 0,
+      "n_observed_pass": 0,
+      "first_time_pass": 0,
+      "median_s": null,
+      "median_cost_usd": null,
+      "median_tool_calls": null,
+      "note": "NO DATA"
+    },
+    {
+      "feature": "components",
+      "band": "2",
+      "model": "sonnet",
+      "n": 9,
+      "n_observed_pass": 8,
+      "first_time_pass": 6,
+      "median_s": 105.1,
+      "median_cost_usd": 0.214,
+      "median_tool_calls": 11,
+      "note": ""
+    },
+    {
+      "feature": "components",
+      "band": "2",
+      "model": "opus",
+      "n": 2,
+      "n_observed_pass": 2,
+      "first_time_pass": 2,
+      "median_s": 204.2,
+      "median_cost_usd": 0.66,
+      "median_tool_calls": 13.0,
+      "note": "n<5"
+    },
+    {
+      "feature": "components",
+      "band": "3+",
+      "model": "haiku",
+      "n": 0,
+      "n_observed_pass": 0,
+      "first_time_pass": 0,
+      "median_s": null,
+      "median_cost_usd": null,
+      "median_tool_calls": null,
+      "note": "NO DATA"
+    },
+    {
+      "feature": "components",
+      "band": "3+",
+      "model": "sonnet",
+      "n": 8,
+      "n_observed_pass": 7,
+      "first_time_pass": 7,
+      "median_s": 107.55,
+      "median_cost_usd": 0.27,
+      "median_tool_calls": 13.0,
+      "note": ""
+    },
+    {
+      "feature": "components",
+      "band": "3+",
+      "model": "opus",
+      "n": 0,
+      "n_observed_pass": 0,
+      "first_time_pass": 0,
+      "median_s": null,
+      "median_cost_usd": null,
+      "median_tool_calls": null,
+      "note": "NO DATA"
+    },
+    {
+      "feature": "tests",
+      "band": "fast",
+      "model": "haiku",
+      "n": 10,
+      "n_observed_pass": 9,
+      "first_time_pass": 9,
+      "median_s": 70.65,
+      "median_cost_usd": 0.01,
+      "median_tool_calls": 10.5,
+      "note": ""
+    },
+    {
+      "feature": "tests",
+      "band": "fast",
+      "model": "sonnet",
+      "n": 29,
+      "n_observed_pass": 23,
+      "first_time_pass": 20,
+      "median_s": 73.4,
+      "median_cost_usd": 0.204,
+      "median_tool_calls": 10,
+      "note": ""
+    },
+    {
+      "feature": "tests",
+      "band": "fast",
+      "model": "opus",
+      "n": 2,
+      "n_observed_pass": 2,
+      "first_time_pass": 2,
+      "median_s": 204.2,
+      "median_cost_usd": 0.66,
+      "median_tool_calls": 13.0,
+      "note": "n<5"
+    },
+    {
+      "feature": "tests",
+      "band": "slow",
+      "model": "haiku",
+      "n": 0,
+      "n_observed_pass": 0,
+      "first_time_pass": 0,
+      "median_s": null,
+      "median_cost_usd": null,
+      "median_tool_calls": null,
+      "note": "NO DATA"
+    },
+    {
+      "feature": "tests",
+      "band": "slow",
+      "model": "sonnet",
+      "n": 4,
+      "n_observed_pass": 4,
+      "first_time_pass": 4,
+      "median_s": 178.8,
+      "median_cost_usd": 0.234,
+      "median_tool_calls": 12.5,
+      "note": "n<5"
+    },
+    {
+      "feature": "tests",
+      "band": "slow",
+      "model": "opus",
+      "n": 0,
+      "n_observed_pass": 0,
+      "first_time_pass": 0,
+      "median_s": null,
+      "median_cost_usd": null,
+      "median_tool_calls": null,
+      "note": "NO DATA"
+    },
+    {
+      "feature": "hard_review_focus",
+      "band": "none",
+      "model": "haiku",
+      "n": 10,
+      "n_observed_pass": 9,
+      "first_time_pass": 9,
+      "median_s": 70.65,
+      "median_cost_usd": 0.01,
+      "median_tool_calls": 10.5,
+      "note": ""
+    },
+    {
+      "feature": "hard_review_focus",
+      "band": "none",
+      "model": "sonnet",
+      "n": 33,
+      "n_observed_pass": 27,
+      "first_time_pass": 24,
+      "median_s": 78.5,
+      "median_cost_usd": 0.211,
+      "median_tool_calls": 10,
+      "note": ""
+    },
+    {
+      "feature": "hard_review_focus",
+      "band": "none",
+      "model": "opus",
+      "n": 2,
+      "n_observed_pass": 2,
+      "first_time_pass": 2,
+      "median_s": 204.2,
+      "median_cost_usd": 0.66,
+      "median_tool_calls": 13.0,
+      "note": "n<5"
+    },
+    {
+      "feature": "hard_review_focus",
+      "band": "deep/numeric/state/protocol",
+      "model": "haiku",
+      "n": 0,
+      "n_observed_pass": 0,
+      "first_time_pass": 0,
+      "median_s": null,
+      "median_cost_usd": null,
+      "median_tool_calls": null,
+      "note": "NO DATA"
+    },
+    {
+      "feature": "hard_review_focus",
+      "band": "deep/numeric/state/protocol",
+      "model": "sonnet",
+      "n": 0,
+      "n_observed_pass": 0,
+      "first_time_pass": 0,
+      "median_s": null,
+      "median_cost_usd": null,
+      "median_tool_calls": null,
+      "note": "NO DATA"
+    },
+    {
+      "feature": "hard_review_focus",
+      "band": "deep/numeric/state/protocol",
+      "model": "opus",
+      "n": 0,
+      "n_observed_pass": 0,
+      "first_time_pass": 0,
+      "median_s": null,
+      "median_cost_usd": null,
+      "median_tool_calls": null,
+      "note": "NO DATA"
+    },
+    {
+      "feature": "critical_path",
+      "band": "on",
+      "model": "haiku",
+      "n": 1,
+      "n_observed_pass": 0,
+      "first_time_pass": 0,
+      "median_s": 42.0,
+      "median_cost_usd": 0.006,
+      "median_tool_calls": 5,
+      "note": "n<5"
+    },
+    {
+      "feature": "critical_path",
+      "band": "on",
+      "model": "sonnet",
+      "n": 8,
+      "n_observed_pass": 4,
+      "first_time_pass": 2,
+      "median_s": 60.55,
+      "median_cost_usd": 0.159,
+      "median_tool_calls": 5.5,
+      "note": ""
+    },
+    {
+      "feature": "critical_path",
+      "band": "on",
+      "model": "opus",
+      "n": 0,
+      "n_observed_pass": 0,
+      "first_time_pass": 0,
+      "median_s": null,
+      "median_cost_usd": null,
+      "median_tool_calls": null,
+      "note": "NO DATA"
+    },
+    {
+      "feature": "critical_path",
+      "band": "off",
+      "model": "haiku",
+      "n": 0,
+      "n_observed_pass": 0,
+      "first_time_pass": 0,
+      "median_s": null,
+      "median_cost_usd": null,
+      "median_tool_calls": null,
+      "note": "NO DATA"
+    },
+    {
+      "feature": "critical_path",
+      "band": "off",
+      "model": "sonnet",
+      "n": 22,
+      "n_observed_pass": 20,
+      "first_time_pass": 19,
+      "median_s": 96.3,
+      "median_cost_usd": 0.219,
+      "median_tool_calls": 11.0,
+      "note": ""
+    },
+    {
+      "feature": "critical_path",
+      "band": "off",
+      "model": "opus",
+      "n": 2,
+      "n_observed_pass": 2,
+      "first_time_pass": 2,
+      "median_s": 204.2,
+      "median_cost_usd": 0.66,
+      "median_tool_calls": 13.0,
+      "note": "n<5"
+    }
+  ],
+  "startup": {
+    "haiku": {
+      "n": 1,
+      "prime_seconds_median": 9.8,
+      "first_tool_s_median": 5.3,
+      "first_call_cache_write_tokens_median": 1186,
+      "first_call_cache_read_tokens_median": 6093,
+      "prime_ctx_tokens_median": 43915,
+      "prime_cost_usd_median": 0.003
+    },
+    "sonnet": {
+      "n": 7,
+      "prime_seconds_median": 9.4,
+      "first_tool_s_median": 3.9,
+      "first_call_cache_write_tokens_median": 7227,
+      "first_call_cache_read_tokens_median": 0,
+      "prime_ctx_tokens_median": 43049,
+      "prime_cost_usd_median": 0.075
+    },
+    "_rows": [
+      {
+        "run": "combo-superlite-x1",
+        "model": "sonnet",
+        "seconds": 9.3,
+        "first_tool_s": 4.0,
+        "tool_calls": 3,
+        "first_call_ctx": 7229,
+        "cache_write": 7227,
+        "cache_read": 0,
+        "total_ctx_tokens": 43049,
+        "cost_usd": 0.07473
+      },
+      {
+        "run": "combo-superlite-x1",
+        "model": "sonnet",
+        "seconds": 9.2,
+        "first_tool_s": 4.0,
+        "tool_calls": 3,
+        "first_call_ctx": 7229,
+        "cache_write": 7227,
+        "cache_read": 0,
+        "total_ctx_tokens": 43049,
+        "cost_usd": 0.07525
+      },
+      {
+        "run": "combo-superlite-x1",
+        "model": "sonnet",
+        "seconds": 9.4,
+        "first_tool_s": 3.9,
+        "tool_calls": 3,
+        "first_call_ctx": 7229,
+        "cache_write": 7227,
+        "cache_read": 0,
+        "total_ctx_tokens": 43049,
+        "cost_usd": 0.0754
+      },
+      {
+        "run": "combo-superlite-x1",
+        "model": "sonnet",
+        "seconds": 7.8,
+        "first_tool_s": 3.8,
+        "tool_calls": 3,
+        "first_call_ctx": 7229,
+        "cache_write": 7227,
+        "cache_read": 0,
+        "total_ctx_tokens": 43049,
+        "cost_usd": 0.07518
+      },
+      {
+        "run": "combo-superlite-x1",
+        "model": "sonnet",
+        "seconds": 9.5,
+        "first_tool_s": 4.1,
+        "tool_calls": 3,
+        "first_call_ctx": 7229,
+        "cache_write": 7227,
+        "cache_read": 0,
+        "total_ctx_tokens": 43049,
+        "cost_usd": 0.07535
+      },
+      {
+        "run": "combo-superlite-x1",
+        "model": "sonnet",
+        "seconds": 9.4,
+        "first_tool_s": 3.9,
+        "tool_calls": 3,
+        "first_call_ctx": 7229,
+        "cache_write": 7227,
+        "cache_read": 0,
+        "total_ctx_tokens": 43049,
+        "cost_usd": 0.0754
+      },
+      {
+        "run": "combo-superlite-x1",
+        "model": "haiku",
+        "seconds": 9.8,
+        "first_tool_s": 5.3,
+        "tool_calls": 3,
+        "first_call_ctx": 7281,
+        "cache_write": 1186,
+        "cache_read": 6093,
+        "total_ctx_tokens": 43915,
+        "cost_usd": 0.00287
+      },
+      {
+        "run": "combo-superlite-x1",
+        "model": "sonnet",
+        "seconds": 9.4,
+        "first_tool_s": 3.9,
+        "tool_calls": 3,
+        "first_call_ctx": 7229,
+        "cache_write": 7227,
+        "cache_read": 0,
+        "total_ctx_tokens": 43049,
+        "cost_usd": 0.07543
+      }
+    ]
+  },
+  "prime_ab": {
+    "full": {
+      "n": 3,
+      "passed": 3,
+      "prime_tokens_est": 4648,
+      "median_s": 71.3,
+      "median_cost_usd": 0.011,
+      "median_tool_calls": 12,
+      "median_ctx_tokens": 234147
+    },
+    "mini": {
+      "n": 3,
+      "passed": 3,
+      "prime_tokens_est": 1027,
+      "median_s": 62.7,
+      "median_cost_usd": 0.008,
+      "median_tool_calls": 9,
+      "median_ctx_tokens": 119914
+    }
+  },
+  "samples": 45
+}

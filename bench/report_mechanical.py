@@ -65,6 +65,7 @@ def summary(runs: list[dict]) -> dict:
         "needs_context_or_blocked": sum(1 for t in hk if t.get("status") in ("NEEDS_CONTEXT", "BLOCKED")),
         "tool_calls_per_haiku_task": avg([t["tool_calls"] for t in hk]),
         "tool_calls_per_sonnet_task": avg([t["tool_calls"] for t in sn]),
+        "pool_violations": sum((r["mechanical"].get("pool") or {}).get("pool_violations", 0) for r in runs),
         "cf_cost_saved_usd": round(sum(c["haiku_saves_cost_usd"] for c in cfs), 4),
         "cf_critical_path_saved_s": round(sum(c["critical_path_saved_s"] or 0 for c in cfs), 1),
     }
@@ -89,6 +90,28 @@ def render(runs: list[dict]) -> str:
     out += ["", "## Haiku tasks",
             table(rows, ["run", "task", "kind", "loc", "disp", "dur_s", "ctx tok", "out tok~", "cost", "tools", "status",
                          "1st-pass", "rework_s", "rework$", "crit", "slack_s", "lag_s"]) if rows else "(none)"]
+    miss = [(r["run"], t) for r in runs for t in r["tasks"] if t.get("model") == "haiku" and t.get("first_time_pass") is False]
+    unobs = [f"{r['run']} {t['task']}" for r in runs for t in r["tasks"] if t.get("model") == "haiku" and t.get("first_time_pass") is None]
+    n_h = sum(1 for r in runs for t in r["tasks"] if t.get("model") == "haiku")
+    out += ["", f"## Haiku misses: {len(miss)} of {n_h} tasks failed first time" + (f" (unobserved: {', '.join(unobs)})" if unobs else "")]
+    if miss:
+        def why(t):
+            st = (t.get("status") or "").upper()
+            return st if st in ("NEEDS_CONTEXT", "BLOCKED") else ("red tests" if t.get("kind_miss_incidents") or t.get("rework_dispatches") else "wrong output")
+        out.append(table([[r, t["task"], why(t), (t.get("status_reason") or "")[:70], t.get("rework_dispatches"), _f(t.get("rework_s")),
+                           _f(t.get("rework_cost"), 4, "$")] for r, t in miss],
+                         ["run", "task", "why", "reason", "fixer dispatches", "rework_s", "rework$"]))
+    else:
+        out.append("(none observed)")
+    prow = []
+    for r in runs:
+        po = r["mechanical"].get("pool")
+        if po:
+            lag = ", ".join(f"{m}:{v['mean']}s(n={v['n']})" for m, v in sorted(po["start_lag_s_by_model"].items())) or "-"
+            prow.append([r["run"], po["pool_violations"], ",".join(po["violating_tasks"]) or "-", po.get("haiku_on_critical_path", 0), po["haiku_agents"],
+                         po["haiku_lane_reuse"], lag, ",".join(po["tier_sources"]) or "-"])
+    out += ["", "## Pool honesty (violations should be 0)",
+            table(prow, ["run", "violations", "tasks", "haiku_on_critical_path", "haiku agents", "lane reuse", "start lag by model", "tier from"]) if prow else "(none)"]
     s = summary(runs)
     out += ["", "## Combined", json.dumps(s, indent=1), "",
             "* COUNTERFACTUAL ESTIMATE, not measured: Haiku tasks re-priced at Sonnet prices and re-timed at models.json "
