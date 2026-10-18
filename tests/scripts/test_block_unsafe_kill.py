@@ -7,7 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 HOOK = ROOT / "hooks" / "block-unsafe-kill"
 # Git Bash on Windows (WSL's bash.exe in System32 would not see Windows paths), bash elsewhere.
-_GIT_BASH = r"C:\Program Files\Gitinash.exe"
+_GIT_BASH = r"C:\Program Files\Git\bin\bash.exe"
 BASH = _GIT_BASH if os.name == "nt" and os.path.exists(_GIT_BASH) else shutil.which("bash")
 
 
