@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# PreToolUse hook (Bash): during an active superlite run, rewrite the COORDINATOR's raw test runs
+# (pytest, npm test, npx vitest|jest, go test, cargo test, dotnet test, ...) into a background
+# `sl run_tests --full`. Calls with agent_id (subagents), commands that already contain run_tests,
+# and sessions without a run marker (.superlite/stable.json, prime.md or pool.json) are untouched.
+# Chained commands keep their other work: only the test segment is replaced, separators stay, and
+# the whole command then runs in the background. Anything ambiguous (odd quotes, heredocs, \u
+# escapes) passes unchanged. Each rewrite is logged to .superlite/incidents.jsonl (rule-rewrite).
+# Bash builtins only (each external process costs ~250 ms on Windows). Exit 0 always (fail open).
+
+IFS= read -r -d '' input   # builtin; returns 1 at EOF, which is fine
+
+re_agent='"agent_id"[[:space:]]*:[[:space:]]*"'
+[[ $input =~ $re_agent ]] && exit 0   # subagent call
+re_tool='"tool_name"[[:space:]]*:[[:space:]]*"Bash"'
+[[ $input =~ $re_tool ]] || exit 0
+
+# jstr KEY: first JSON string value for KEY, decoded, into REPLY (empty if absent).
+jstr() {
+  local re='"'"$1"'"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)"' s
+  REPLY=""
+  [[ $input =~ $re ]] || return 0
+  s="${BASH_REMATCH[1]}"
+  s="${s//\\\\/$'\x01'}"; s="${s//\\\"/\"}"; s="${s//\\n/$'\n'}"; s="${s//\\r/}"; s="${s//\\t/	}"; s="${s//\\\//\/}"
+  REPLY="${s//$'\x01'/\\}"
+}
+# esc VAR: JSON-escape the string in VAR.
+esc() {
+  local s="${!1}"
+  s="${s//\\/\\\\}"; s="${s//\"/\\\"}"; s="${s//$'\n'/\\n}"; s="${s//$'\r'/}"; s="${s//$'\t'/\\t}"
+  printf -v "$1" '%s' "$s"
+}
+
+jstr cwd; proj="${CLAUDE_PROJECT_DIR:-${REPLY//\\//}}"
+[ -n "$proj" ] || proj="$PWD"
+[ -f "$proj/.superlite/stable.json" ] || [ -f "$proj/.superlite/prime.md" ] || [ -f "$proj/.superlite/pool.json" ] || exit 0
+
+jstr command; cmd="$REPLY"
+[ -n "$cmd" ] || exit 0
+case "$cmd" in *run_tests*|*'<<'*|*'\u'*) exit 0 ;; esac
+
+# Plugin root: CLAUDE_PLUGIN_ROOT, else the root of the plugin this hook file lives in.
+root="${CLAUDE_PLUGIN_ROOT:-}"
+if [ -z "$root" ]; then
+  self="${BASH_SOURCE[0]//\\//}"
+  case "$self" in /*|?:/*) ;; *) self="${PWD//\\//}/$self" ;; esac
+  root="${self%/hooks/*}"
+fi
+root="${root//\\//}"
+sl="bash \"$root/skills/subagent-driven-development/scripts/sl\" run_tests --full"
+
+# A test segment: optional env assignments and runner prefix, then a known runner.
+re_test='^[[:space:]]*([A-Za-z_][A-Za-z_0-9]*=[^[:space:]]*[[:space:]]+)*((uv|poetry|pipenv|pdm|hatch)[[:space:]]+run[[:space:]]+)?(((python[0-9.]*|py)([[:space:]]+-[0-9]+)?[[:space:]]+-m[[:space:]]+)?(pytest|py\.test|unittest)|((npm|pnpm|yarn|bun)[[:space:]]+(run[[:space:]]+)?test)|((npx|pnpm[[:space:]]+(exec|dlx)|bunx|yarn)[[:space:]]+(--no-install[[:space:]]+)?(vitest|jest))|(vitest|jest)|(go|cargo|dotnet)[[:space:]]+test)([[:space:]]|$)'
+re_seg='^([^&|;'$'\n'']*)(&&|\|\||;|\||'$'\n''|&)(.*)$'
+
+ph1=$'\x02'; ph2=$'\x03'
+cmd="${cmd//>&/$ph1}"; cmd="${cmd//&>/$ph2}"   # keep 2>&1 and &> out of the separator split
+out=""; rest="$cmd"; changed=0
+while :; do
+  if [[ $rest =~ $re_seg ]]; then seg="${BASH_REMATCH[1]}"; sep="${BASH_REMATCH[2]}"; rest="${BASH_REMATCH[3]}"; last=0
+  else seg="$rest"; sep=""; last=1; fi
+  q="${seg//[^\"]/}"; q2="${seg//[^\']/}"
+  if [ $(( ${#q} % 2 )) = 1 ] || [ $(( ${#q2} % 2 )) = 1 ]; then exit 0; fi   # quote spans a separator
+  if [[ $seg =~ $re_test ]]; then out="$out $sl "; changed=1; else out="$out$seg"; fi
+  out="$out$sep"
+  [ "$last" = 1 ] && break
+done
+[ "$changed" = 1 ] || exit 0
+
+orig="${cmd:0:120}"; orig="${orig//[\"\\$'\n\r\t']/ }"
+printf '{"kind":"rule-rewrite","agent":"coordinator","tool":"Bash","command":"%s"}\n' "$orig" \
+  >> "$proj/.superlite/incidents.jsonl" 2>/dev/null
+
+out="${out//$ph1/>&}"; out="${out//$ph2/&>}"
+esc out
+printf '%s' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","updatedInput":{"command":"'"$out"'","run_in_background":true,"description":"sl run_tests --full (rewritten from a raw test run)"},"additionalContext":"raw test run rewritten to a background sl run_tests --full; its result arrives as a notification and in .superlite/test-summary.json; use `sl run_tests --wait` only at the final gate"}}'
+printf '\n'
+exit 0
