@@ -3,12 +3,16 @@
   "version": 1,
   "reference_model": "sonnet",
   "default_model": "sonnet",
-  "defaults": {"components": 1, "loc": 100, "tests": "fast"},
+  "defaults": {
+    "components": 1,
+    "loc": 100,
+    "tests": "fast"
+  },
   "time": {
-    "base_min": 0.80,
-    "per_component_min": 0.45,
-    "per_loc_min": 0.0065,
-    "slow_tests_min": 0.50
+    "base_min": 1.0813,
+    "per_component_min": 0.405,
+    "per_loc_min": 0.002178,
+    "slow_tests_min": 0.6068
   },
   "context": {
     "prefix": 18000,
@@ -27,6 +31,12 @@
     "output_per_call": 120,
     "cache_ttl": "5m"
   },
-  "schedule": {"tail_min": 3.5},
-  "fit": null
+  "schedule": {
+    "tail_min": 3.5
+  },
+  "fit": {
+    "n": 19,
+    "mae_before_min": 2.1379,
+    "mae_after_min": 1.4351
+  }
 }

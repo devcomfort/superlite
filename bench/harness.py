@@ -922,6 +922,59 @@ def own_tests(run_dir: Path) -> dict:
     return {"own_tests_summary": tail[0]}
 
 
+def _load_plan_tools():
+    sdir = str(ROOT / "skills" / "subagent-driven-development" / "scripts")
+    if sdir not in sys.path:
+        sys.path.insert(0, sdir)
+    import plan_tools
+    return plan_tools
+
+
+def task_records(run_dir: Path, dispatches: list[dict]) -> list[dict]:
+    """Per-task observations for `predict.py --refit`: each implementer dispatch (task id from its
+    description, e.g. "T4 sitegen search/links") joined to that task's plan features. Re-dispatches
+    of one task sum their durations. Tasks with no plan match are skipped."""
+    plans = sorted((run_dir / "docs" / "plans").glob("*.md"), key=lambda p: (p.stat().st_mtime, p.name))
+    texts = {p: p.read_text(encoding="utf-8-sig", errors="replace") for p in plans}
+    with_graph = [p for p in plans if re.search(r"^\s*%%\s*taskgraph\b", texts[p], re.M)]
+    chosen = (with_graph or plans)[-1:]
+    if not chosen:
+        return []
+    pt = _load_plan_tools()
+    plan = pt.Plan(texts[chosen[0]], chosen[0])
+    secs: dict[str, float] = {}
+    models: dict[str, str] = {}
+    for d in dispatches:
+        m = re.match(r"\s*(T\d+)\b", d.get("description") or "")
+        if (not m or "implementer" not in (d.get("subagent_type") or "")
+                or d.get("start_s") is None or d.get("end_s") is None):
+            continue
+        tid = m.group(1)
+        secs[tid] = secs.get(tid, 0.0) + (d["end_s"] - d["start_s"])
+        models.setdefault(tid, d.get("model"))
+    out = []
+    for tid, s in secs.items():
+        task = plan.by_id.get(tid)
+        feats = task.explicit_features if task else {}
+        if not task or "loc" not in feats:
+            continue
+        out.append({"task": tid, "components": feats.get("components", 1), "loc": feats["loc"],
+                    "tests": feats.get("tests", "fast"), "model": feats.get("model") or models.get(tid),
+                    "actual_s": round(s, 1)})
+    out.sort(key=lambda r: pt.nkey(r["task"]))
+    return out
+
+
+def cmd_rescore_tasks(arm: str, rep: str) -> None:
+    """Add/refresh the `tasks` key of an existing score JSON without rerunning the hidden suites."""
+    name = f"{PREFIX}{arm}-{rep}"
+    path = RESULTS / f"{name}.json"
+    score = json.loads(path.read_text(encoding="utf-8"))
+    score["tasks"] = task_records(RUNS / name, score.get("dispatches") or [])
+    path.write_text(json.dumps(score, indent=2), encoding="utf-8")
+    print(f"{name}: {len(score['tasks'])} task records")
+
+
 def cmd_score(arm: str, rep: str) -> dict:
     name = f"{PREFIX}{arm}-{rep}"
     run_dir = RUNS / name
@@ -964,6 +1017,7 @@ def cmd_score(arm: str, rep: str) -> dict:
         # The stream's last event excludes decider time spent between resumes; arm_wall_s is the real clock.
         **({"actual_total_s": meta["arm_wall_s"]} if "arm_wall_s" in meta else {}),
         "model_usage": model_usage,
+        "tasks": [],  # filled below from the dispatches and the run's plan
         "src_loc": src_loc,
         "commits": int(commits or 0),
         **own_tests(run_dir),
@@ -972,6 +1026,7 @@ def cmd_score(arm: str, rep: str) -> dict:
         **(hidden_score(run_dir, TASK_HIDDEN.parent / "robustness", "robust")
            if (TASK_HIDDEN.parent / "robustness").is_dir() else {}),
     }
+    score["tasks"] = task_records(run_dir, score.get("dispatches") or [])
     (RESULTS / f"{name}.json").write_text(json.dumps(score, indent=2), encoding="utf-8")
     brief = {k: v for k, v in score.items() if k not in ("model_usage", "hidden_failed_ids", "dispatches", "assignments")}
     print(json.dumps(brief, indent=2))
@@ -1004,6 +1059,8 @@ if __name__ == "__main__":
         cmd_run(args[1], args[2], "--smoke" in args, "--human" in args)
     elif args[0] == "score":
         cmd_score(args[1], args[2])
+    elif args[0] == "rescore-tasks":
+        cmd_rescore_tasks(args[1], args[2])
     elif args[0] == "report":
         cmd_report()
     else:
