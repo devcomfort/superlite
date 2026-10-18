@@ -32,8 +32,9 @@ In both modes, write for the split:
 2. **Producers first, with exact `Produces` lines.** Lint resolves each `Consumes` against some task's `Produces` line, so write producers before their consumers: exact name, parameter types and return type. A consumer is then stable the moment it's written, even while its producer is still building or being fixed.
 3. **Finish each task block before starting the next.** No placeholders, and every field filled. A half-written task is a fix task, and so is everything with an edge to it.
 4. **Size each task for the band as you write it.** Fill Components, LOC owned and Tests honestly, and aim for 2-5 min predicted. Something that looks over 6 min is two blocks from the start (server / UI, engine / CLI), not one block that lint sends back.
-5. **Fewest edges.** Draw an edge only when a task's tests run another task's code. Order tasks so that those with no edges come first and each later task adds only what the earlier ones unblock.
+5. **Fewest edges.** Draw an edge only when a task's tests run another task's code, never for an interface that has examples (rule 7). Order tasks so that those with no edges come first and each later task adds only what the earlier ones unblock.
 6. **Mark the easy ones.** A task that meets the `Kind: mechanical` rules gets `Kind: mechanical` and `Model: haiku` when you write it.
+7. **Contract examples.** Under every `Produces` another task consumes that returns structured data, add 2-3 `e.g.` lines: a call and its result with concrete values, in the plan's own language, for example `e.g. parse("1+2") -> Binary("+", Num(1), Num(2))`. One source, two uses: the consumer's fake returns exactly these examples, and the producer's tests assert them. Lint reports `EXAMPLE:` for a consumer whose producer has none (a fix task until it does), and `EDGE:` for an edge that exists only for interfaces with examples: drop it, or run `plan_tools prune` before the first dispatch. Never say stubs cannot compute values: examples are the values.
 
 ## Plan shape, in this order
 
@@ -156,11 +157,11 @@ These are plan failures: "TBD", "TODO", "add error handling", "handle edge cases
 Run both. Replace `PLAN` and `SPEC` with the paths. `<superlite-root>` is two levels above this skill's "Base directory for this skill: ..." path (run it through `cygpath -u` first if that exists).
 
 ```
-bash "<superlite-root>/skills/subagent-driven-development/scripts/sl" plan_tools schedule --plan PLAN --insert
+bash "<superlite-root>/skills/subagent-driven-development/scripts/sl" plan_tools prune --plan PLAN
 bash "<superlite-root>/skills/subagent-driven-development/scripts/sl" plan_tools lint --plan PLAN --spec SPEC --stable
 ```
 
-`schedule --insert` writes the Gantt and its summary line (critical path, peak width, predicted total) under a `%% schedule` marker. Never hand-edit that block.
+`prune` drops the edges that examples make removable (consumer not yet dispatched), then runs `schedule --insert`, which writes the Gantt, its summary line (critical path, peak width, predicted total) and a `shape:` line under a `%% schedule` marker. Never hand-edit that block. `CHAIN [chain-xxxx]` is silenced only by `Ruling: sequential [chain-xxxx] - <why>` with the id lint printed; a ruling written before lint never matches.
 
 Read the lint output:
 - **`MISSED TARGET`** is a warning, not a failure. Consider re-splitting or stubbing the tasks on the named critical path. If the chain is inherently sequential, accept the plan and record `Ruling: <why>`.

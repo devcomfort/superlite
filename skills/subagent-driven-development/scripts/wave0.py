@@ -126,6 +126,9 @@ def stub_spec(plan) -> str:  # O(q*s)
             out.append(f"      - name: {quote(sig['name'])}")  # O(1)
             out.append(f"        params: [{', '.join(quote(p) for p in params)}]")  # O(s)
             out.append(f"        returns: {quote(sig['ret'] or '')}")  # O(1)
+        if t.examples:  # the plan's hand-built examples: what the producer returns | O(k)
+            out.append("    examples:")  # O(1)
+            out += [f"      - {quote(ex)}" for ex in t.examples]  # O(k)
     return "\n".join(out) + "\n"  # O(out)
 
 

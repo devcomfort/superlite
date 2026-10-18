@@ -42,6 +42,7 @@ TASK_ID_RE = re.compile(rf"^{TASK_ID}$")  # O(1)
 HEADING_RE = re.compile(rf"^#{{3,4}}\s+({TASK_ID})\b(.*)$")  # O(1)
 ANY_HEADING_RE = re.compile(r"^#{1,4}\s")  # O(1)
 FIELD_RE = re.compile(r"^\*\*([^*:]+?)(?:\s*\([^)]*\))?:\*\*\s*(.*)$")  # O(1)
+EG_RE = re.compile(r"^\s*(?:[-*]\s+)?(?:\*\*)?e\.g\.(?:\*\*)?:?\s*(.+?)\s*$", re.I)  # an example line under Produces | O(1)
 FENCE_RE = re.compile(r"^\s{0,3}(`{3,}|~{3,})(.*)$")  # O(1)
 
 
@@ -176,6 +177,11 @@ class Task:  # O(1)
         return self._items("produces")  # O(k*s)
 
     @property  # O(1)
+    def examples(self) -> list[str]:  # O(k*s)
+        """`e.g.` lines: hand-built examples of what the Produces interfaces return (a call and its result)."""
+        return [strip_ticks(x.strip()) for x in self.fields.get("e.g.", []) if x.strip()]  # O(k*s)
+
+    @property  # O(1)
     def consumes(self) -> list[str]:  # O(k*s)
         return self._items("consumes")  # O(k*s)
 
@@ -304,6 +310,11 @@ class Plan:  # O(1)
                 continue  # O(1)
             body.append(ln)  # O(1) amortized
             if self.fenced[i]:  # O(1)
+                continue  # O(1)
+            em = EG_RE.match(ln)  # O(s)
+            if em:  # an example line stays with its task and keeps its own field | O(1)
+                cur.fields.setdefault("e.g.", []).append(em.group(1).strip())  # O(s)
+                cur_field = "e.g."  # O(1)
                 continue  # O(1)
             fm = FIELD_RE.match(ln.strip())  # O(s)
             if fm:  # O(1)
@@ -930,9 +941,16 @@ def cmd_schedule(args) -> int:  # O(C+L + schedule) total
         out["tasks"] = {t: {"min": round(rep["times"][t], 3), "start": round(rep["start"][t], 3),  # O(n)
                             "end": round(rep["end"][t], 3), "lane": rep["lane"][t], "source": rep["source"][t]}  # O(1)
                         for t in rep["times"]}  # O(1)
+        import shape  # O(1)
+        out["shape"] = shape.shape_line(plan, rep["graph"], rep)  # O(e*n*(n + e))
         print(json.dumps(out, ensure_ascii=False, indent=2))  # O(n) output
     else:  # O(1)
         print(summary_line(rep))  # O(path)
+        try:  # advisory: chain length, width, removable edges, build with and without them | O(e*n*(n + e))
+            import shape  # O(1)
+            print(shape.shape_line(plan, rep["graph"], rep))  # O(e*n*(n + e))
+        except Exception:  # noqa: BLE001 | O(1)
+            pass  # O(1)
         for t in sorted(rep["start"], key=lambda x: (rep["start"][x], nkey(x))):  # O(n log n) sort; O(n) iterations
             print(f"  {t}: lane {rep['lane'][t]}, {rep['start'][t]:.1f} to {rep['end'][t]:.1f} min ({rep['source'][t]})")  # O(1)
         if args.insert:  # O(1)
@@ -1126,6 +1144,10 @@ def lint_plan(plan: Plan, args) -> tuple[list[str], list[str]]:  # O(n^2*k*s + e
                 issues.append(Issue(f"{t.id} consumes {sig['name']}({sig['args']}) but {pid} produces "  # O(s)
                                     f"{psig['name']}({psig['args']})" + (f" -> {psig['ret']}" if psig["ret"] else ""), [t.id]))  # O(1)
 
+    import shape  # lazy: shape imports this module | O(1)
+    issues.extend(shape.example_issues(plan))  # a consumer of structured data without examples is a fix task | O(n*q)
+    warnings.extend(shape.split_notes(plan))  # O(n*q)
+
     # diagrams
     for b in plan.mermaid_blocks():  # O(b) iterations
         err = check_diagram(b)  # O(B)
@@ -1166,15 +1188,21 @@ def lint_plan(plan: Plan, args) -> tuple[list[str], list[str]]:  # O(n^2*k*s + e
                     warnings.append(f"NOTE: {t} predicted {times[t]:.1f} min < {low_min:g}; consider merging with a related task")  # O(1)
             rep = schedule_report(plan, args)  # O(n*(n+e) + n*p) re-parses graph and times
             cp, ctimes = rep["critical_path"], [rep["times"][t] for t in rep["critical_path"]]  # O(n) draft tasks are not in rep
-            if len(cp) >= 3 and ctimes and sum(ctimes) > 2.5 * max(ctimes) + 1e-9:  # O(n)
-                ratio = sum(ctimes) / max(ctimes)  # O(1)
-                ruling = re.search(r"^.*Ruling:\s*sequential\s*-.*$", plan.text, re.M | re.I)  # O(C)
-                if ruling:  # O(1)
-                    warnings.append(f"NOTE: {ruling.group(0).strip()}")  # O(1)
+            work = sum(rep["times"].values())  # total predicted work | O(n)
+            base = max(max(rep["times"].values(), default=0.0), work / max(1, rep["peak_width"]))  # longest task or work / width | O(n)
+            if len(cp) >= 3 and ctimes and sum(ctimes) > 2.5 * base + 1e-9:  # O(n)
+                cid = shape.chain_id(cp, ctimes)  # short hash of the chain's tasks and minutes | O(n)
+                rulings = re.findall(r"^.*Ruling:\s*sequential\s*\[(chain-[0-9a-f]+)\]\s*-\s*(.*)$", plan.text, re.M | re.I)  # O(C)
+                hit = [r for r in rulings if r[0].lower() == cid]  # a ruling counts only if it carries the id lint printed | O(r)
+                if hit:  # O(1)
+                    warnings.append(f"NOTE: accepted Ruling: sequential [{cid}] chain {' -> '.join(cp)} {sum(ctimes):.1f} min "  # O(n)
+                                    f"vs baseline {base:.1f} min (costs {sum(ctimes) - base:.1f} min): {hit[0][1].strip()}")
                 else:  # O(1)
-                    issues.append(Issue(f"CHAIN: critical path {' -> '.join(cp)} is {sum(ctimes):.1f} min, {ratio:.1f}x the longest task "  # O(n)
-                                        f"({max(ctimes):.1f} min); stub the interfaces so consumers test against fakes, "  # O(1)
-                                        "or add Ruling: sequential - <why>", cp, "plan", chain=True))  # O(1)
+                    ignored = " (a Ruling: sequential without this id was ignored)" if re.search(r"Ruling:\s*sequential", plan.text, re.I) else ""  # O(C)
+                    issues.append(Issue(f"CHAIN [{cid}]: critical path {' -> '.join(cp)} is {sum(ctimes):.1f} min, over 2.5x "  # O(n)
+                                        f"max(longest task, work / peak width) = {base:.1f} min{ignored}; give producers e.g. examples and "
+                                        f"run prune, or add Ruling: sequential [{cid}] - <why>", cp, "plan", chain=True))  # O(1)
+            warnings.extend(shape.edge_notes(plan, graph, rep))  # EDGE: removable edges, with the path after each | O(e*n*(n + e))
             if rep["target_min"] is not None and not rep["target_met"]:  # O(1)
                 miss = (f"MISSED TARGET: predicted {rep['total_min']:.1f} min vs target {rep['target_min']:.1f} min "  # O(1)
                         f"— critical path {' → '.join(rep['critical_path'])}")  # O(1)
@@ -1377,7 +1405,7 @@ def cmd_lint_stable(args) -> int:  # O(lint + n*k*s)
     for pi in plan_issues:  # O(issues)
         print(f"  PLAN: {pi}")  # O(1)
     for w in warnings:  # O(w)
-        if w.startswith(("NOTE: ", "WARNING")):  # O(1)
+        if w.startswith(("NOTE: ", "WARNING", "EDGE: ")):  # O(1)
             print(w)  # O(1)
     brief = sl_dir / "briefs" / "wave0.md"  # O(1)
     first = []  # T0 agent line, printed once | O(1)
@@ -1406,6 +1434,9 @@ def cmd_lint_stable(args) -> int:  # O(lint + n*k*s)
         print(stats_line + "; " + pred)  # O(1)
         print("TIERS: " + " ".join(f"{t}={tiers[t]}" for t in stable if t in tiers))  # O(n)
     print("DISPATCH NOW: " + (" ".join(pending) if pending else "none"))  # O(n)
+    accepted = [w[len("NOTE: "):] for w in warnings if w.startswith("NOTE: accepted Ruling: sequential")]  # for finish | O(w)
+    (sl_dir / "chain-rulings.json").parent.mkdir(parents=True, exist_ok=True)  # O(1)
+    (sl_dir / "chain-rulings.json").write_text(json.dumps(accepted, indent=1), encoding="utf-8")  # O(w)
     out.parent.mkdir(parents=True, exist_ok=True)  # O(1)
     out.write_text(json.dumps({"stable": stable, "fix": fix, "plan_issues": plan_issues, "interfaces": interfaces, "blocks": blocks, "tiers": tiers}, indent=1), encoding="utf-8")  # O(S)
     entry = {"time": datetime.now().isoformat(timespec="seconds"), "stable": len(stable), "fix": len(fix),  # O(n)
@@ -1414,6 +1445,13 @@ def cmd_lint_stable(args) -> int:  # O(lint + n*k*s)
     with (sl_dir / "lint-log.jsonl").open("a", encoding="utf-8") as fh:  # O(1)
         fh.write(json.dumps(entry) + "\n")  # O(n)
     return 0 if stable and not frozen else 1  # O(1)
+
+
+def cmd_prune(args) -> int:  # O(prune)
+    import shape  # O(1)
+    edges = shape.prune(args.plan, None, getattr(args, "dir", None))  # O(e*n*(n + e))
+    print("pruned: " + (", ".join(f"{a}->{b}" for a, b in edges) if edges else "no removable edges"))  # O(e)
+    return 0  # O(1)
 
 
 def cmd_lint(args) -> int:  # O(lint) total
@@ -1469,6 +1507,11 @@ def build_parser():  # O(1) total
     p.add_argument("--json", action="store_true")  # O(1)
     add_predictor_args(p)  # O(1)
     p.set_defaults(func=cmd_schedule)  # O(1)
+
+    p = sub.add_parser("prune", help="drop taskgraph edges whose interfaces all have e.g. examples (consumer not dispatched), then schedule --insert")  # O(1)
+    p.add_argument("--plan", required=True)  # O(1)
+    p.add_argument("--dir", help=".superlite folder (default: next to the plan's root)")  # O(1)
+    p.set_defaults(func=cmd_prune)  # O(1)
 
     p = sub.add_parser("lint", help="check the plan; MISSED TARGET is a warning (exit 0)")  # O(1)
     p.add_argument("--plan", required=True)  # O(1)

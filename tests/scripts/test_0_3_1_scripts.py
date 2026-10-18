@@ -299,18 +299,42 @@ def test_source_excerpts_unit_caps(tmp_path):
 
 # ------------------------------------------------------------------ lint: CHAIN and OPUS-TASK
 
+def _chain_plan(tmp_path):
+    """A 4-task chain beside 6 independent tasks: critical path 20 min against max(longest 5, work 50 / width 7)."""
+    st = {f"T{i}": None for i in range(1, 11)}
+    return make_plan(tmp_path, st, [("T1", "T2"), ("T2", "T3"), ("T3", "T4")])
+
+
+def _chain_id(out):
+    import re
+    return re.search(r"CHAIN \[(chain-[0-9a-f]{4})\]", out).group(1)
+
+
 def test_lint_chain_flags_long_sequential_path(tmp_path):
-    plan = make_plan(tmp_path, {f"T{i}": None for i in range(1, 5)}, [("T1", "T2"), ("T2", "T3"), ("T3", "T4")])
+    plan = _chain_plan(tmp_path)
     r = run("plan_tools", "lint", "--plan", plan, "--stated", "--max-task-min", "10")
-    assert r.returncode == 1 and "CHAIN: critical path T1 -> T2 -> T3 -> T4 is 20.0 min, 4.0x the longest task (5.0 min)" in r.stdout
-    assert "Ruling: sequential - <why>" in r.stdout
+    assert r.returncode == 1 and "CHAIN [chain-" in r.stdout
+    assert "critical path T1 -> T2 -> T3 -> T4 is 20.0 min, over 2.5x max(longest task, work / peak width) = 7.1 min" in r.stdout
+    assert "Ruling: sequential [chain-" in r.stdout
 
 
-def test_lint_chain_ruling_suppresses_to_note(tmp_path):
+def test_lint_pure_chain_is_not_flagged_by_the_new_baseline(tmp_path):
     plan = make_plan(tmp_path, {f"T{i}": None for i in range(1, 5)}, [("T1", "T2"), ("T2", "T3"), ("T3", "T4")])
-    plan.write_text(plan.read_text(encoding="utf-8") + "\nRuling: sequential - one shared parser\n", encoding="utf-8")
+    assert "CHAIN" not in run("plan_tools", "lint", "--plan", plan, "--stated", "--max-task-min", "10").stdout  # width 1: work == path
+
+
+def test_lint_chain_ruling_needs_the_printed_chain_id(tmp_path):
+    plan = _chain_plan(tmp_path)
+    cid = _chain_id(run("plan_tools", "lint", "--plan", plan, "--stated", "--max-task-min", "10").stdout)
+    text = plan.read_text(encoding="utf-8")
+    for bad in ("Ruling: sequential - one shared parser", "Ruling: sequential [chain-0000] - wrong id"):  # written before lint / wrong id
+        plan.write_text(text + "\n" + bad + "\n", encoding="utf-8")
+        r = run("plan_tools", "lint", "--plan", plan, "--stated", "--max-task-min", "10")
+        assert f"CHAIN [{cid}]" in r.stdout and "without this id was ignored" in r.stdout
+    plan.write_text(text + f"\nRuling: sequential [{cid}] - one shared parser\n", encoding="utf-8")
     r = run("plan_tools", "lint", "--plan", plan, "--stated", "--max-task-min", "10")
-    assert "CHAIN" not in r.stdout and "NOTE: Ruling: sequential - one shared parser" in r.stdout
+    assert "CHAIN" not in r.stdout
+    assert f"NOTE: accepted Ruling: sequential [{cid}] chain T1 -> T2 -> T3 -> T4 20.0 min vs baseline 7.1 min (costs 12.9 min): one shared parser" in r.stdout
 
 
 def test_lint_chain_needs_three_tasks_and_ignores_drafts(tmp_path):

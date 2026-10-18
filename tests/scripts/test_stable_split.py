@@ -138,12 +138,11 @@ def test_stable_size_error_is_attributed_structurally(tmp_path):
 
 
 def test_stable_flagged_chain_members_are_unstable(tmp_path):
-    tasks = [{"id": "T1", "time": 1.5}, {"id": "T2", "time": 1.5}, {"id": "T3", "time": 1.5},
-             {"id": "T4", "time": 1.5}, {"id": "T5", "time": 2}]
-    pt("lint", "--stable", "--plan", make_plan(tmp_path, tasks, [("T1", "T2"), ("T2", "T3"), ("T3", "T4")]))
+    tasks = [{"id": f"T{i}", "time": 1.5} for i in range(1, 6)] + [{"id": f"T{i}", "time": 2} for i in range(6, 16)]
+    pt("lint", "--stable", "--plan", make_plan(tmp_path, tasks, [("T1", "T2"), ("T2", "T3"), ("T3", "T4"), ("T4", "T5")]))
     data = stable_json(tmp_path)
-    assert "T5" in data["stable"]
-    assert {f["task"] for f in data["fix"]} == {"T1", "T2", "T3", "T4"}
+    assert "T6" in data["stable"]
+    assert {f["task"] for f in data["fix"]} == {"T1", "T2", "T3", "T4", "T5"}
     assert any(i.startswith("CHAIN") for i in data["plan_issues"])
     assert "on flagged CHAIN" in data["fix"][0]["reasons"]
 

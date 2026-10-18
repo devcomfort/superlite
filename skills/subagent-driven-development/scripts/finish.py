@@ -149,6 +149,14 @@ def summary(ledger, log, lint_log=DEFAULT_LINT_LOG, plan=None, sl_dir=None):  # 
     out.append("")  # O(1)
     out.append(unblocked_report(ledger, lint_log))  # see unblocked_report
     out.append("")  # O(1)
+    cr = Path(ledger).with_name("chain-rulings.json")  # sequential rulings lint accepted, with the minutes they cost | O(1)
+    try:  # O(1)
+        accepted = json.loads(cr.read_text(encoding="utf-8")) if cr.is_file() else []  # O(size)
+    except ValueError:  # O(1)
+        accepted = []  # O(1)
+    out.append(f"sequential rulings accepted: {len(accepted)}")  # O(1)
+    out += [f"- {a}" for a in accepted]  # O(accepted)
+    out.append("")  # O(1)
     if plan is not None:  # O(1)
         out.append(history_section(plan or None, sl_dir or str(Path(ledger).parent)))  # see history_section
         out.append("")  # O(1)
