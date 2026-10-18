@@ -53,7 +53,8 @@ Here T1, T2 and T3 run in parallel; T2 and T3 build against T1's stubs, not its 
 ## Split by interface
 
 1. **Interface stubs in Wave 0.** Wave 0 holds the skeleton (manifest, package inits, test config, shared error types) and interface stubs for every `Produces` another task consumes. `plan_tools.py stubs` generates them from your `Produces` lines, so write those lines exactly as `module.function(args) -> ret` or `Class.method(args) -> ret`, with a one-line contract in the task. The stub is the contract: implementers may not change a signature without a coordinator ruling.
-2. **A task waits only when its tests execute another task's code.** Consumers test against stubs with small fakes. The integration test that runs both sides belongs to the later task.
+2. **A task waits only when its tests execute another task's code.** Consumers test against stubs with small fakes, never against the real producer. Integration tests that run both sides go in one small integration task per package at the end, so the consumers themselves don't wait. A chain like parser → evaluator → workbook → CLI becomes one wave of four tasks against stubs, plus the integration task.
+2a. **Keep the chain short.** Lint fails with `CHAIN:` when the predicted critical path is over 2.5 times its longest task (with 3 or more tasks on it). Stub more interfaces, or add `Ruling: sequential - <why>` when the order really is forced, such as a migration before its users.
 3. **Cap the longest task at about 3 min.** Split over-3-min tasks along their components, for example a server+UI task becomes server (against the workbook stub) and UI (against the spec's JSON contract).
 4. **Merge tasks smaller than an agent's overhead.** An agent costs about 18k tokens and 30-60 s to start. If the variable part (Est. context minus 18k) is under about 18k, or the task takes under a minute, merge it with a related task in the same package, unless that lengthens the critical path or breaks the 80k limit.
 5. **Slow tests stay out of the inner loop.** Mark them `Tests: slow`. Implementers run only fast tests during TDD, and slow suites run once in the background after commit.
@@ -94,7 +95,7 @@ The title line shows `Complexity` and `Est. context`; drop the mini diagram if t
 | `Components` | Integer count of components the task builds. |
 | `LOC owned` | Integer estimate of lines this task writes. |
 | `Tests` | `fast` or `slow` (browser, server and I/O suites are slow, pure functions fast). |
-| `Model` | `sonnet` by default; `opus` only for Complexity 7+ or security-sensitive code. |
+| `Model` | Always `sonnet`; lint rejects `opus` (Opus writes about half as fast). Split a task that seems to need Opus. If Sonnet can't get part of it right, a `fixer-opus` handles that part. Security-sensitive code still gets an Opus review. |
 | `Est. time` | `predict.py` recomputes it from the four fields above, and the fields win on disagreement. Write them honestly. |
 | `Est. context` | `18k + 3.3k + 21.6 per LOC owned + 0.45 per char of docs handed over + 36.9 per LOC read`, plus a 10-15% margin. Over 80k means split. |
 | `Consumes`/`Produces` | Exact names, parameter types and return types. An implementer reads only its own task, so this is how it learns what neighbors named things. |
