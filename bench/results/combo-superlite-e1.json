@@ -162,10 +162,144 @@
     "plan_write_s": null,
     "first_implementer_s": 74.4,
     "last_implementer_end_s": 1808.0,
+    "last_build_end_s": 1023.9,
     "final_review_start_s": 1130.1,
     "final_review_end_s": 1525.9,
     "last_event_s": 2025.5
   },
+  "queued_assignments": 1,
+  "agent_reuse_idle": 7,
+  "relevance_polls": 0,
+  "relevance_poll_s": null,
+  "reuse_limit_breaches": 4,
+  "idle_gaps_s": 136.3,
+  "critical_path_s": 1659.7,
+  "critical_path_actual": 1659.7,
+  "critical_path_predicted": null,
+  "tail_after_build_s": 1001.7,
+  "last_build_end_s": 1023.9,
+  "incidents": {
+    "count": 0,
+    "by_kind": {}
+  },
+  "graphify_used": false,
+  "final_review_s": 400.5,
+  "final_fix_s": 369.9,
+  "longest_task_s": 351.6,
+  "est_time_error": null,
+  "predicted_total_s": null,
+  "actual_total_s": 2035.3,
+  "seam_checks": null,
+  "seam_mismatches": null,
+  "reviews_per_task": 0.29,
+  "reviews_batched": 2,
+  "review_cost_usd": 1.094,
+  "prime_hash_mismatches": null,
+  "coordinator_turns": 58,
+  "coordinator_report_lag_s": 4.0,
+  "coordinator_report_lag_max_s": 8.0,
+  "unsafe_kill_commands": 0,
+  "assignments": [
+    {
+      "to": "ab18c34b73bd4169d",
+      "t": 89.6,
+      "kind": "task",
+      "busy": false,
+      "queued": false,
+      "reuse_idle": false,
+      "limit_breach": false
+    },
+    {
+      "to": "a144f429de3071fb2",
+      "t": 93.5,
+      "kind": "task",
+      "busy": false,
+      "queued": false,
+      "reuse_idle": false,
+      "limit_breach": false
+    },
+    {
+      "to": "a58c5084388e513de",
+      "t": 99.4,
+      "kind": "task",
+      "busy": false,
+      "queued": false,
+      "reuse_idle": false,
+      "limit_breach": false
+    },
+    {
+      "to": "ab18c34b73bd4169d",
+      "t": 293.6,
+      "kind": "task",
+      "busy": false,
+      "queued": false,
+      "reuse_idle": true,
+      "limit_breach": false
+    },
+    {
+      "to": "a58c5084388e513de",
+      "t": 467.2,
+      "kind": "task",
+      "busy": false,
+      "queued": false,
+      "reuse_idle": true,
+      "limit_breach": false
+    },
+    {
+      "to": "a144f429de3071fb2",
+      "t": 481.1,
+      "kind": "task",
+      "busy": false,
+      "queued": false,
+      "reuse_idle": true,
+      "limit_breach": false
+    },
+    {
+      "to": "ab18c34b73bd4169d",
+      "t": 539.4,
+      "kind": "fix",
+      "busy": false,
+      "queued": false,
+      "reuse_idle": true,
+      "limit_breach": false
+    },
+    {
+      "to": "a58c5084388e513de",
+      "t": 699.5,
+      "kind": "task",
+      "busy": false,
+      "queued": false,
+      "reuse_idle": true,
+      "limit_breach": true
+    },
+    {
+      "to": "a58c5084388e513de",
+      "t": 812.8,
+      "kind": "fix",
+      "busy": true,
+      "queued": true,
+      "reuse_idle": false,
+      "limit_breach": true
+    },
+    {
+      "to": "ab18c34b73bd4169d",
+      "t": 1540.1,
+      "kind": "fix",
+      "busy": false,
+      "queued": false,
+      "reuse_idle": true,
+      "limit_breach": true
+    },
+    {
+      "to": "a58c5084388e513de",
+      "t": 1548.2,
+      "kind": "fix",
+      "busy": false,
+      "queued": false,
+      "reuse_idle": true,
+      "limit_breach": true
+    }
+  ],
   "model_usage": {
     "claude-opus-5-5": {
       "inputTokens": 142,
@@ -203,7 +337,7 @@
   },
   "src_loc": 2716,
   "commits": 16,
-  "own_tests_summary": "604 passed in 60.95s (0:01:00)",
+  "own_tests_summary": "604 passed in 77.91s (0:01:17)",
   "hidden_passed": 177,
   "hidden_total": 177,
   "hidden_failed_ids": [],
