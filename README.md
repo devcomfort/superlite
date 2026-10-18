@@ -6,14 +6,13 @@
 
 <p align="center">
   <b>Hand an agent a spec. Come back to finished, tested work.</b><br>
-  An autonomous, feather-light build workflow for Claude Code, held together by scripts and hooks instead of good intentions.
+  An autonomous, feather-light build workflow for Claude Code.
 </p>
 
 <p align="center">
   <img alt="license" src="https://img.shields.io/badge/license-MIT-6366f1">
   <img alt="Claude Code plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-2dd4bf">
   <img alt="parallel agents" src="https://img.shields.io/badge/parallel%20agents-up%20to%2018-c084fc">
-  <img alt="gated by code" src="https://img.shields.io/badge/gated%20by-code%2C%20not%20prompts-6366f1">
 </p>
 
 ---
@@ -24,7 +23,6 @@ superlite plans a build, splits it into tasks that can run side by side, hands e
 
 - **Autonomous.** Describe the project, pick the AI orchestrator, and walk away. Decisions it has to make are recorded as rulings, not asked as questions.
 - **Fast.** Up to 18 agents at once, a plan written for parallelism, and mechanical work on Haiku.
-- **Gated by code.** The rules that matter are enforced by hooks and scripts that block the wrong move, not by a prompt that asks nicely.
 
 ### Not a rival to superpowers
 
@@ -43,30 +41,12 @@ Same machine, same task: build a Python site generator and a spreadsheet engine 
 | Fastest-to-slowest spread, 3 runs | 26.4 min | **9.1 min** |
 | Agents working at once | 3 to 4 | **up to 18** |
 | Hidden tests passed | 177 / 177 | 177 / 177 (a tie, at higher speed) |
-| Earlier 9-module benchmark (1 run each) | 34.4 min, $8.15 | **8.8 min, $3.28** |
+| Earlier 9-module benchmark (1 run each) | 34.4 min | **8.8 min** |
 | superlite against its own first version | 26.9 min | **16.1 min** (40% faster) |
 
-And it is not tied to one language. A TypeScript site generator went from spec to 132 / 132 hidden tests in **8.5 minutes for $3.39**.
+And it is not tied to one language. A TypeScript site generator went from spec to 132 / 132 hidden tests in **8.5 minutes**.
 
-<sub>The 16.1 min figure is one run of the current build. The superpowers figures, the spread row (3 runs of each, on an earlier superlite build) and the 9-module row (the first version, 1 run each) come from earlier runs on the same machine, so treat the gaps as indications, not a statistical proof. superlite spends more than orchestrated superpowers on this task ($9.38 against $6.89) and scores lower on the extra robustness probes (4 of 7 against about 5.7 of 7). Details, runs and caveats: [bench/](bench/) and the Benchmark section below.</sub>
-
----
-
-## Gated by code, not by prompts
-
-Instructions drift. Scripts and hooks do not. These gates run on every build:
-
-| Gate | What it enforces | How |
-|---|---|---|
-| **The coordinator cannot write code** | Every change goes to a fix-only or implementer agent, by tier; the block message says which | `block-coordinator-edits` hook |
-| **No unsafe kills** | No `pkill` or `taskkill /IM`; only PIDs the run started | `block-unsafe-kill` hook |
-| **Tests never block the coordinator** | A raw `pytest`, `npm test`, `go test` and so on is rewritten into a background `sl run_tests` | `rewrite-test-runs` hook |
-| **A plan must lint before work starts** | Stable tasks dispatch at once; others wait with a reason. Size band, frozen interfaces, and chain rulings that must carry the id lint printed | `lint --stable` |
-| **Same plan, same agents** | Task features pick the agent tier from `routing.json`; Haiku only for mechanical tasks off the critical path, never for fixes | `routing.py` |
-| **Agents stay in their tier** | A task goes only to an idle agent of its own tier; nothing queues behind a busy one | `dispatch` |
-| **Cost caps are enforced** | Warns at 70% of the cap; over the cap it stops optional work | `sl budget` |
-| **Every run is measured** | Each agent's tokens, cost and time are captured automatically and feed the next run's predictions | capture hooks, `~/.superlite/history.jsonl` |
-| **No agent spawns agents** | Subagents get explicit tool lists with no `Agent` | agent definitions |
+<sub>The 16.1 min figure is one run of the current build. The superpowers figures, the spread row (3 runs of each, on an earlier superlite build) and the 9-module row (the first version, 1 run each) come from earlier runs on the same machine, so treat the gaps as indications, not a statistical proof. superlite can cost more than superpowers and scores lower on the extra robustness probes (4 of 7 against about 5.7 of 7). Details, runs and caveats: [bench/](bench/) and the Benchmark section below.</sub>
 
 ---
 
@@ -79,10 +59,11 @@ Instructions drift. Scripts and hooks do not. These gates run on every build:
 | **Debug** | "This test fails on leap days: find the root cause and fix it" | `systematic-debugging` finds the cause first; fixes go to fix-only agents by tier, each leaving a note, and escalate after two failed rounds |
 | **A small change** | "Rename `build` to `render` everywhere" | Small work stays inline, with a reviewer always |
 | **Review and harden** | "Review this branch and fix what you find" | Package reviewers fix their own findings; the final reviewer reports findings with tiers and never edits |
+| **You approve first** | "Build X. I will approve the plan" | A human orchestrator: you get a plain-language review plan with diagrams; nothing runs until you say yes |
 | **Hands off** | "Build X. I am away, decide yourself" | The AI orchestrator plans, lints, dispatches and rules on open choices without stopping |
 | **Ship it** | "We are done: finish the branch" | Verification first, then merge or PR options. It never pushes without you |
 
-**Who orchestrates.** With a human orchestrator you validate the whole plan, shown with its predicted schedule, **before** it is linted and sent off. With the AI orchestrator it does everything itself.
+**Who orchestrates.** With a human orchestrator you review a plain-language plan with diagrams (a `.review.md`, about two pages, with a rough time and cost) **before** anything is linted or sent off; after your yes the coordinator rewrites it in the agent format (task graph, interfaces, examples, sizes) and runs it. With the AI orchestrator it does everything itself, with no review plan and no questions.
 
 ---
 
@@ -107,100 +88,19 @@ Open a fresh session and send `Let's make a react todo list`. A working install 
 
 ```mermaid
 flowchart LR
-  A([Your request]) --> B[Brainstorm<br/>one batch of questions]
-  B --> C[Plan<br/>contracts, not code]
-  C --> D{"lint --stable<br/>the gate"}
-  D --> E[Wave 0<br/>skeleton on Haiku]
-  D --> F[Parallel tasks<br/>routed by tier]
-  E --> G[Package reviews]
-  F --> G
-  G --> H[Final review<br/>findings only]
-  H --> I[Fix-only agents<br/>by tier]
-  I --> J([Done, measured])
+  A([Your request]) --> B[Plan]
+  B --> C[Build in parallel]
+  C --> D[Review and fix]
+  D --> E([Done])
 ```
 
 ---
 
-## Reference
+## More
 
-The rest of this file is the reference: skills and agents, hooks, tools, config, per-harness installation, the benchmark harness and the task list.
+How it works, in [docs/](docs/): [how a run works](docs/how-a-run-works.md) · [skills and agents](docs/skills-and-agents.md) · [hooks](docs/hooks.md) · [tools](docs/tools.md) · [config](docs/config.md) · [language support](docs/language.md) · [how the rules are enforced](docs/gates.md) · [an example review plan](docs/example-review-plan.md). Installation for other harnesses, the benchmark harness and the task list follow below.
 
-## Skills
-
-- `using-superlite` (injected at session start)
-- `brainstorming`
-- `writing-plans`
-- `subagent-driven-development`
-- `test-driven-development`
-- `systematic-debugging`
-- `verification-before-completion`
-- `finishing-a-development-branch`
-
-Agents (`agents/`):
-
-- `implementer` (sonnet, medium): builds one task, then stays idle for reuse.
-- `implementer-haiku` (haiku, high): builds one `Kind: mechanical` task (fully specified, small, fast tests) exactly as written; stops rather than guesses.
-- `package-reviewer` (sonnet, medium): reviews one committed task or one package, then fixes its own findings with regression tests.
-- `final-reviewer` (opus, high): a fresh one-turn reviewer that reads only the review packet (Read, Grep, Glob). It returns findings, each with a fix tier, and never fixes.
-- `fixer-sonnet` (sonnet, medium): tier 1, cause known (including a fully specified change), fix confined to one module.
-- `fixer-sonnet-high` (sonnet, high): tier 2, cause known but the fix spans modules or a seam, or a known probe class.
-- `fixer-opus` (opus, high): tier 3, cause unknown (it diagnoses), or a lower tier failed twice.
-
-### How a run works
-
-The coordinator (Opus, medium effort) never writes project code or runs raw tests. `writing-plans` produces a task graph. A human approves the whole plan once, then `plan_tools lint --stable` freezes the stable tasks and the tier of each. In a delegated run (the user pre-approved or said "decide yourself") the plan is streamed: stable tasks start building while the fixes are made. Wave 0, the skeleton and stubs, is built first by `implementer-haiku` from a brief the tools write from the plan. Stable tasks are then dispatched by tier: Sonnet `implementer` by default, Haiku for `Kind: mechanical` tasks that are off the critical path (the mechanical lane). Consumers build against interface stubs and the `e.g.` contract examples, and integration is one task per package. `commit_task` commits each task's own files and starts probes and seam checks. Tests run in the background into `.superlite/test-summary.json`. `package-reviewer` reviews selected tasks or whole packages and fixes its own findings. A review packet (incidents, probe failures, test summary, source excerpts) goes to one fresh `final-reviewer`, which returns findings only, each with a fix tier. Fix-only agents (`fixer-sonnet`, `fixer-sonnet-high`, `fixer-opus`) take them by tier. A fix keeps a decision, so Haiku never fixes. Each round rewrites a file note in `.superlite/fixes/<id>.md`, and a tier that fails twice escalates to a fresh agent primed by the note. `finish` lists the rulings, and `history write` appends the run's rows to `~/.superlite/history.jsonl`. Design and decisions: `C:\Work\Planning\Specs\2026-10-17-superlite-architecture-design.md` (§3.0, §12).
-
-### Hooks
-
-`hooks/hooks.json` registers these. The run hooks are active only while a run marker exists (`.superlite/stable.json`, `prime.md` or `pool.json`, written by the first lint). They fail open on bad input.
-
-- `session-start`: injects `using-superlite` at startup, clear and compact.
-- `block-unsafe-kill`: always on for Bash and PowerShell; blocks killing processes by name or pattern (`taskkill /IM`, `pkill`, `killall`, `Stop-Process -Name`). Kill by PID is allowed.
-- `block-coordinator-edits`: during a run, blocks the coordinator (calls without `agent_id`) from writing project code. It may write `docs/plans/**`, `SPEC*.md`, `docs/**/*.md` and `.superlite/**`. Subagents always pass.
-- `rewrite-test-runs`: during a run, rewrites the coordinator's raw test commands (pytest, npm test, go test, cargo test, dotnet test, ...) into a background `sl run_tests --full`, and logs a `rule-rewrite` incident.
-- `capture-agent-launch`: during a run, appends a `launch` record (agent id, type, model, description) to `.superlite/metrics.jsonl` after each `Agent` call.
-- `capture-agent-stop`: during a run, appends a `stop` record (agent id, type, transcript path, last message) to `.superlite/metrics.jsonl` when a subagent stops.
-
-### Tools
-
-Mechanical steps are scripts, not agents. Every tool runs as `bash <skill-dir>/scripts/sl <tool> ...`, where `<skill-dir>` is `skills/subagent-driven-development`. The `sl` launcher runs a `.sh` tool under bash and a `.py` tool under the first working Python, and exits 3 when there is none. It caches that interpreter, so each later call is one Python start (`SUPERLITE_PYTHON` skips the probe entirely). Tools that need each other import them in process instead of spawning `sl` again. The tools are Python, but the project can be any language.
-
-| Tool | What it does |
-|---|---|
-| `plan_tools` | Plan lint (`--stable` freezes tasks and tiers), task graph, stubs, schedule, prune, and the `adapter`, `packet` and `contract` review subcommands |
-| `wave0` | Builds the Wave 0 skeleton brief for `implementer-haiku` from the plan alone |
-| `routing` | Maps each task's plan features to a tier (haiku or sonnet) using `routing.json` |
-| `shape` | Build shape: contract examples, removable edges, prune, chain ids |
-| `predict` | Predicts each task's time, context and cost; `--refit` fits the coefficients |
-| `build_prime` | Builds the shared prime that every agent reads first (`--tier haiku` builds the mini prime) |
-| `dispatch` | Ready tasks and who runs each, in one call (`next_tasks` + `assign`) |
-| `next_tasks` | Computes which tasks are ready |
-| `assign` | Scores idle agents and picks the most relevant one |
-| `commit_task` | Checks scope and commits one or more tasks' owned files; `--dispatch` also prints the next dispatch |
-| `run_tests` | Runs the project's test command, with `--background`, then `--wait` for the summary; writes `.superlite/test-summary.json` |
-| `testcmd` | Resolves the project's test command: `.superlite/test-cmd.json`, else detection (npm, go, cargo, dotnet, Python) |
-| `pt_review` | `adapter`, `packet` (the final review packet) and `contract` (seam checks) |
-| `probe_run` | Parallel robustness probes with no agents (Python projects only) |
-| `incident` | Records and queries the shared incident log (file, line, context) |
-| `budget` | One line of elapsed time and cost against the plan's target and cap |
-| `metrics` | Per-task time, tokens and cost from `.superlite/metrics.jsonl` and agent transcripts |
-| `history` | Run history: `write` rows to `~/.superlite/history.jsonl`, `read`, `derive` stats, `import` bench scores |
-| `graphify_gate` | Gates Graphify for search in non-trivial codebases |
-| `finish` | Collects the finish summary (rulings, commits, test counts, open incidents) |
-
-`_pyrun.py` is a shared helper, not a tool. Probes live in `probes/` with the probe pack in `probes/pack/`.
-
-### Config
-
-In `skills/subagent-driven-development/config/`:
-
-- `models.json`: prices (USD per million tokens) and output speed per model. Edit it when they change.
-- `predictor.json`: the time and context coefficients and the size band `predict` uses. Refit with `sl predict --refit`.
-- `routing.json`: task features to tier (`haiku` or `sonnet`), tier agents and limits, and the stats gate. A critical-path task never gets haiku.
-
-### Language
-
-The tools are Python, but the project can be in any language. `run_tests` uses the project's own test command (`.superlite/test-cmd.json`, else detection from its marker files). The probe stage (`probe_run`) is Python only.
+---
 
 ## Configuration
 
