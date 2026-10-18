@@ -4,8 +4,8 @@
     commit_task.py Tn [--plan P] [--ledger .superlite/progress.md]
                       [--log .superlite/incidents.jsonl] [--allow-other-tasks]
 
-Steps: scope check (changes outside Owns block the commit and are logged as
-incidents), py_compile plus an import check on each touched .py file, commit
+Steps: scope check (changes outside every task's Owns block the commit and are logged as
+incidents; files another task owns are left uncommitted, silently), py_compile plus an import check on each touched .py file, commit
 with the task title, append the SHA to the progress ledger, then launch in the
 background `sl probe_run --commit SHA` and, for every seam of the task graph
 (`sl plan_tools taskgraph --format full`) that involves this task and whose both
@@ -175,12 +175,30 @@ def spawn_background(cmd):
                      stderr=subprocess.DEVNULL, **kw)
 
 
-def launch_probes(sha):
+def probe_categories(plan):
+    """Union of the Review Focus categories in the plan, comma separated ("" if none).
+
+    There is no plan or progress source for the app type, so --app-type is not passed."""
+    try:
+        import pt_review
+        cats = []
+        for _pkg, cs in pt_review.focus_packages(pt_review.parse_plan(plan)):
+            cats += [c for c in cs if c not in cats]
+        return ",".join(cats)
+    except Exception:
+        return ""
+
+
+def launch_probes(sha, plan=None):
     probe = Path(os.environ.get("SUPERLITE_PROBE_RUN")
                  or nt.SCRIPTS.parent / "probes" / "probe_run.py")
     if not probe.exists():
         return False
-    spawn_background(nt.sl_command("probe_run", "--commit", sha))
+    extra = []
+    cats = probe_categories(plan) if plan else ""
+    if cats:
+        extra = ["--categories", cats]
+    spawn_background(nt.sl_command("probe_run", "--commit", sha, *extra))
     return True
 
 
@@ -237,7 +255,7 @@ def main(argv=None):
     ap.add_argument("--ledger", default=DEFAULT_LEDGER)
     ap.add_argument("--log", default=DEFAULT_LOG)
     ap.add_argument("--allow-other-tasks", action="store_true",
-                    help="ignore (do not stage) files owned by other plan tasks")
+                    help="no-op alias (kept for compatibility): other tasks' files are always left alone")
     a = ap.parse_args(argv)
 
     info = nt.parse_plan(a.plan)
@@ -265,8 +283,8 @@ def main(argv=None):
             continue
         if nt.owns_match(f, owns):
             mine.append(f)
-        elif a.allow_other_tasks and nt.owns_match(f, other):
-            continue
+        elif nt.owns_match(f, other):
+            continue  # another task's file, built in parallel in this tree: leave it alone
         else:
             out_of_scope.append(f)
 
@@ -300,7 +318,7 @@ def main(argv=None):
         return 1
     sha = git("rev-parse", "HEAD").stdout.strip()
     append_ledger(a.ledger, f"- commit {a.task} {sha[:10]} {task['title']}")
-    launch_probes(sha)
+    launch_probes(sha, a.plan)
     launch_seam_checks(a.plan, a.task, a.ledger, a.log)
     print(sha)
     return 0

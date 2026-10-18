@@ -27,10 +27,17 @@ if [ -z "${script:-}" ]; then
   exit 2
 fi
 
+# $SUPERLITE_PYTHON: an existing file (path may contain spaces) runs quoted; else word-split
+# (a command with args such as `py -3`).
+sp=()
+if [ -n "${SUPERLITE_PYTHON:-}" ]; then
+  if [ -f "$SUPERLITE_PYTHON" ]; then sp=("$SUPERLITE_PYTHON"); else read -r -a sp <<<"$SUPERLITE_PYTHON"; fi
+fi
+
 works() { "$@" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' >/dev/null 2>&1; }
 
-if [ -n "${SUPERLITE_PYTHON:-}" ] && works $SUPERLITE_PYTHON; then
-  exec $SUPERLITE_PYTHON "$script" "$@"
+if [ "${#sp[@]}" -gt 0 ] && works "${sp[@]}"; then
+  exec "${sp[@]}" "$script" "$@"
 fi
 for py in python3 python; do
   if command -v "$py" >/dev/null 2>&1 && works "$py"; then exec "$py" "$script" "$@"; fi

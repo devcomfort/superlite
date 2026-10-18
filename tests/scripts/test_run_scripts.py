@@ -9,6 +9,8 @@ import shutil
 import subprocess
 import sys
 import time
+
+import pytest
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -235,17 +237,32 @@ def test_commit_blocks_out_of_scope(tmp_path):
     repo = make_repo(tmp_path)
     write(repo, "src/a.py", "X = 1\n")
     write(repo, "stray.txt", "oops\n")
-    write(repo, "src/b.py", "Y = 2\n")                    # another task's file
+    # src/b.py is another task's file: left alone, not reported
     before = commits(repo)
     r = commit(repo)
     assert r.returncode == 1
-    assert "out-of-scope stray.txt" in r.stdout and "out-of-scope src/b.py" in r.stdout
+    assert "out-of-scope stray.txt" in r.stdout
     assert "src/a.py" not in r.stdout
     assert commits(repo) == before
     assert git(repo, "diff", "--cached", "--name-only") == ""
     log = read_log(repo / ".superlite" / "incidents.jsonl")
-    assert {e["file"] for e in log} == {"stray.txt", "src/b.py"}
+    assert {e["file"] for e in log} == {"stray.txt"}
     assert all(e["kind"] == "exception" and e["agent"] == "commit_task" for e in log)
+
+
+def test_commit_two_tasks_mid_build_leaves_other_tasks_files(tmp_path):
+    repo = make_repo(tmp_path)
+    write(repo, "src/a.py", "X = 1\n")                    # T1, finished
+    write(repo, "src/b.py", "Y = 2\n")                    # T2, still mid-build
+    r = commit(repo, "T1")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert git(repo, "show", "--name-only", "--format=", "HEAD") == "src/a.py"
+    assert "src/b.py" in git(repo, "status", "--porcelain")
+    assert not (repo / ".superlite" / "incidents.jsonl").exists()
+    r = commit(repo, "T2")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert git(repo, "show", "--name-only", "--format=", "HEAD") == "src/b.py"
+    assert git(repo, "status", "--porcelain", "--untracked-files=no") == ""
 
 
 def test_commit_allow_other_tasks_skips_their_files(tmp_path):
@@ -259,6 +276,53 @@ def test_commit_allow_other_tasks_skips_their_files(tmp_path):
     write(repo, "stray.txt", "x")                          # owned by nobody still blocks
     write(repo, "src/c.py", "Z = 3\n")
     assert commit(repo, "T3", "--allow-other-tasks").returncode == 1
+
+
+def test_pytest_cmd_falls_back_to_uv_when_pytest_missing(monkeypatch):
+    import _pyrun
+    monkeypatch.setattr(_pyrun, "have_pytest", lambda: False)
+    monkeypatch.setattr(_pyrun.shutil, "which", lambda n: "/x/uv")
+    assert _pyrun.pytest_cmd() == ["/x/uv", "run", "--no-project", "--with", "pytest",
+                                   "python", "-m", "pytest"]
+    monkeypatch.setattr(_pyrun.shutil, "which", lambda n: None)
+    with pytest.raises(_pyrun.PytestUnavailable, match="pytest is not installed"):
+        _pyrun.pytest_cmd()
+    monkeypatch.setattr(_pyrun, "have_pytest", lambda: True)
+    assert _pyrun.pytest_cmd() == [sys.executable, "-m", "pytest"]
+
+
+def test_run_tree_kills_grandchild_on_timeout(tmp_path):
+    import _pyrun
+    pidfile = tmp_path / "pid"
+    child = ("import subprocess,sys,time;"
+             "p=subprocess.Popen([sys.executable,'-c','import time;time.sleep(60)']);"
+             f"open(r'{pidfile}','w').write(str(p.pid));time.sleep(60)")
+    with pytest.raises(subprocess.TimeoutExpired):
+        _pyrun.run_tree([sys.executable, "-c", child], timeout=3, capture_output=True)
+    gpid = int(pidfile.read_text())
+    time.sleep(1)
+    if os.name == "nt":
+        out = subprocess.run(["tasklist", "/FI", f"PID eq {gpid}"], capture_output=True,
+                             text=True).stdout
+        assert str(gpid) not in out
+    else:
+        with pytest.raises(OSError):
+            os.kill(gpid, 0)
+
+
+def test_launch_probes_passes_review_focus_categories(tmp_path, monkeypatch):
+    import commit_task
+    plan = tmp_path / "plan.md"
+    plan.write_text("## Review Focus\n\n- pkg: deep, numeric\n- other: state, deep\n",
+                    encoding="utf-8")
+    assert commit_task.probe_categories(str(plan)) == "deep,numeric,state"
+    seen = []
+    probe = tmp_path / "probe_run.py"
+    probe.write_text("")
+    monkeypatch.setenv("SUPERLITE_PROBE_RUN", str(probe))
+    monkeypatch.setattr(commit_task, "spawn_background", lambda cmd: seen.append(cmd))
+    commit_task.launch_probes("abc1234", str(plan))
+    assert seen[0][-2:] == ["--categories", "deep,numeric,state"]
 
 
 def test_commit_rejects_syntax_error(tmp_path):

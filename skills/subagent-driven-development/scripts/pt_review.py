@@ -41,6 +41,9 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _pyrun as pyrun  # noqa: E402
+
 CATEGORIES = ("deep", "numeric", "encoding", "protocol", "file", "state")
 CHARS_PER_TOKEN = 1.9  # 20k tokens ~ 38k chars (plan section 5)
 RESOLVED = {"fixed", "resolved", "closed", "wontfix", "accepted"}
@@ -898,9 +901,13 @@ def rerun_consumer_tests(root: Path, consumer: Task, timeout: float) -> tuple[li
     files = [o for o in consumer.owns() if o.endswith(".py") and TEST_PATH_RE.search(o) and (root / o).is_file()]
     if not files:
         return [], [f"part3 skipped: {consumer.id} owns no existing Python test files"]
-    cmd = [sys.executable, "-m", "pytest", "-q", "-x", "--no-header", "-p", "no:cacheprovider", *files]
     try:
-        proc = subprocess.run(cmd, cwd=root, env=project_env(root, SUPERLITE_REAL="1"), capture_output=True,
+        base = pyrun.pytest_cmd()
+    except pyrun.PytestUnavailable as e:
+        return [], [f"part3 skipped: {e}"]
+    cmd = [*base, "-q", "-x", "--no-header", "-p", "no:cacheprovider", *files]
+    try:
+        proc = pyrun.run_tree(cmd, cwd=root, env=project_env(root, SUPERLITE_REAL="1"), capture_output=True,
                               text=True, encoding="utf-8", errors="replace", timeout=timeout)
     except subprocess.TimeoutExpired:
         return [Mismatch(3, files[0], 1, f"{consumer.id} tests hung (> {timeout:.0f}s) with SUPERLITE_REAL=1",

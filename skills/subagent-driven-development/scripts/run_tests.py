@@ -25,6 +25,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _pyrun as pyrun  # noqa: E402
 import commit_task as ct  # noqa: E402
 import next_tasks as nt  # noqa: E402
 
@@ -125,10 +126,16 @@ def main(argv=None):
 
     with tempfile.TemporaryDirectory() as tmp:
         xml_path = Path(tmp) / "junit.xml"
-        cmd = [sys.executable, "-m", "pytest", *paths, "-q", "-p", "no:cacheprovider",
+        try:
+            base = pyrun.pytest_cmd()
+        except pyrun.PytestUnavailable as e:
+            print(f"run_tests: {e}", file=sys.stderr)
+            print("0 0 0 0.0")
+            return 2
+        cmd = [*base, *paths, "-q", "-p", "no:cacheprovider",
                "-o", "junit_family=xunit1", f"--junitxml={xml_path}"]
         t0 = time.monotonic()
-        r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
+        r = pyrun.run_tree(cmd, capture_output=True, text=True, encoding="utf-8",
                            errors="replace")
         seconds = time.monotonic() - t0
         if (r.returncode not in (0, 1) or not xml_path.exists()
