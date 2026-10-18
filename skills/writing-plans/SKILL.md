@@ -5,114 +5,163 @@ description: Use when you have an approved design or requirements for a multi-st
 
 # Writing Plans
 
-A plan is a set of contracts that Sonnet implementers can execute without asking questions. Each task says which files it owns, which signatures it consumes and produces, which tests it must pass, how much context it needs, and which wave it runs in. How much code the plan carries is set by the `detail` switch. Code the implementer would write anyway burns Opus time and invites transcription errors.
+A plan is a set of contracts Sonnet implementers can execute without asking questions, and also the input to the 0.3 engine: a machine-readable task graph, interface stubs, per-task time predictions, a predicted schedule and probe plans. Write it so scripts can parse it. Code the implementer would write anyway burns Opus time and invites transcription errors.
 
 Save to `docs/plans/YYYY-MM-DD-<topic>.md`. When called from `superlite:brainstorming`, append to its doc instead. If the spec covers independent subsystems, write one plan per subsystem.
 
-## Decompose first
+## Plan shape, in this order
 
-List the files and what each is responsible for. One responsibility per file, split by responsibility and not by layer, and follow the repo's existing patterns. Then cut tasks: a task is the smallest unit with its own tests and a deliverable a reviewer could accept or reject alone. Fold setup, config and docs into the task that needs them. The one exception is shared scaffolding: when several wave-1 tasks need the same project manifest, package `__init__`, test config or shared types to run their tests, put those in a small Wave 0 skeleton task (the coordinator may do it inline) so parallel tasks never collide on them. No separate "write README" task unless the README documents other tasks' output, and then it waits for them.
+1. **Header:** Goal, Architecture, Tech stack, Spec path, `**Detail:** contracts | tests | full` (default `tests`), `**Target-min:** N` (predicted-total target, default 11), global constraints (exact values copied from the spec: version floors, names, formats). Task briefs point here, so do not repeat constraints per task.
+2. **Main diagram** (always): Mermaid of components and data flow.
+3. **File structure:** every file and its one responsibility. Split by responsibility, not by layer, and follow the repo's patterns.
+4. **Task graph** (always, machine-readable): see below.
+5. **Predicted schedule:** generated, never hand-written.
+6. **Sections, one per component or package:** its tasks, a mini diagram only if the section interacts, and a `**Probe entry:**` line.
+7. **Review Focus:** the probe plan.
+8. **Self-review.**
 
-## Plan header
+## Diagram rules
 
-```markdown
-# <Feature> Plan
-**Goal:** one sentence.
-**Architecture:** 2-3 sentences.
-**Tech stack:** versions, test runner, shell.
-**Spec:** path (omit if the design is in this file).
-**Detail:** contracts | tests | full (default: tests)
-## Global constraints
-- exact values copied from the spec: version floors, dependency limits, names, formats
-## Waves
-| Wave | Tasks (parallel) |
-|---|---|
-| 1 | T1, T2 |
-| 2 | T3 (imports T1) |
+- Main diagram and task graph: always.
+- **Mini diagram only where something interacts:** a sequence across components, a state machine or a protocol, at most about 15 nodes. Skip it for self-contained modules (slug, feed, errors). Their Consumes, Produces, Owns and tests already say everything, and a diagram only repeats them and risks contradicting them.
+- Every Mermaid block must parse. Quote labels that contain parentheses or punctuation.
+
+### Task graph
+
+One `Tn --> Tm` edge per line under a `%% taskgraph` comment. **Only execution dependencies are edges:** Tm's tests must run Tn's code. A names-only dependency (a route path, a CLI flag) or one a stub satisfies is not an edge, so it never makes a task wait. Declare nodes above the marker.
+
+```mermaid
+flowchart LR
+  T1[engine]
+  T2[app layer]
+  T3[ui]
+  T4[integration]
+  %% taskgraph
+  T1 --> T4
+  T2 --> T4
+  T3 --> T4
 ```
 
-Global constraints apply to every task. Task briefs point the implementer here, so do not repeat them per task.
+Here T1, T2 and T3 run in parallel; T2 and T3 build against T1's stubs, not its code. Waves are only a planning view: the scheduler dispatches a task the moment its dependencies are committed, with no wave barrier and no wave width cap.
 
-## Detail levels
+## Split by interface
 
-| Level | Each task carries | Use when |
-|---|---|---|
-| `contracts` | files, signatures, named tests with exact values | well-known patterns |
-| `tests` (default) | contracts, plus the test code verbatim; implementation is prose and contracts | most work: the tests are the binding spec |
-| `full` | tests and implementation code | tricky algorithms, or when fix rounds are expensive |
-
-Add `**Detail:** full` to a single task to override the header, typically an algorithmic core. A verbatim test must still be runnable as written.
+1. **Interface stubs in Wave 0.** Wave 0 holds the skeleton (manifest, package inits, test config, shared error types) and interface stubs for every `Produces` another task consumes. `plan_tools.py stubs` generates them from your `Produces` lines, so write those lines exactly as `module.function(args) -> ret` or `Class.method(args) -> ret`, with a one-line contract in the task. The stub is the contract: implementers may not change a signature without a coordinator ruling.
+2. **A task waits only when its tests execute another task's code.** Consumers test against stubs with small fakes. The integration test that runs both sides belongs to the later task.
+3. **Cap the longest task at about 3 min.** Split over-3-min tasks along their components, for example a server+UI task becomes server (against the workbook stub) and UI (against the spec's JSON contract).
+4. **Merge tasks smaller than an agent's overhead.** An agent costs about 18k tokens and 30-60 s to start. If the variable part (Est. context minus 18k) is under about 18k, or the task takes under a minute, merge it with a related task in the same package, unless that lengthens the critical path or breaks the 80k limit.
+5. **Slow tests stay out of the inner loop.** Mark them `Tests: slow`. Implementers run only fast tests during TDD, and slow suites run once in the background after commit.
+6. **Diagrams are for approval.** The graph and schedule show the width and length of the run before anything runs, when a bad split is cheapest to fix.
 
 ## Task template
 
-```markdown
-### Task N: <name>
-**Files:** create `src/x.py`; modify `src/y.py` (what changes); test `tests/test_x.py`
-**Interfaces:**
-- Consumes: `y.parse(text: str) -> tuple[dict, str]` (Task 1)
-- Produces: `x.render(md: str, *, safe: bool = False) -> str`
-**Tests:**
-- `test_render_escapes_html`: `render("<b>")` returns `"<p>&lt;b&gt;</p>"`
-- `test_render_empty`: `render("")` returns `""`
-**Notes:** only non-obvious algorithm detail (a tie-break rule, an ordering).
-**Est. context:** ~34k
-**Wave:** 1
+Size, not depth: a task is the smallest unit with its own test cycle that a reviewer could reject alone. Fold setup, config and docs into the task that needs them. Docs that describe other tasks' output depend on them.
+
+````markdown
+### T7 minisheet server · Complexity 5 (O-1) · Est. context 38k
+```mermaid
+sequenceDiagram
+  Client->>Server: POST /api/cells {ref, raw}
+  Server->>Workbook: set(ref, raw)
+  Workbook-->>Server: changed refs
+  Server-->>Client: 200 {cells}
 ```
+**Owns:** src/minisheet/server.py, tests/minisheet/test_server.py
+**Components:** 1
+**LOC owned:** 120
+**Tests:** slow
+**Model:** sonnet
+**Est. time:** 2.5 min (1 component, about 120 LOC, slow tests)
+**Consumes:** Workbook.set(ref: str, raw: str) -> list[str] (T5) · Workbook.get(ref: str) -> Value (T5)
+**Produces:** create_server(wb: Workbook, port: int = 0) -> HTTPServer
+**Review Focus:** `test_unknown_method_404`: PUT /api/cells gives 404 {"error": "not found"}; `test_oversize_body_413`: 2 MB body gives 413
+**Test code (verbatim):** ```python … ```
+**Steps:** 1 failing test, 2 run: FAIL, 3 implement, 4 run: PASS
+**Notes:** only non-obvious detail (a tie-break rule, an ordering).
+````
 
-- **Files:** exact paths, and only the ones this task owns.
-- **Interfaces:** exact names, parameter types and return types. An implementer reads only its own task, so this is how it learns what neighbors named things.
-- **Tests:** at `contracts`, each test by name with exact inputs and outputs; at `tests` and `full`, the code itself. Include the error and edge cases the spec implies (empty input, bad syntax, boundary values), not only the happy path. "Tests for the above" is a plan failure.
-- **Notes:** omit the line when there is nothing non-obvious.
-- **Est. context:** peak context in k tokens, from the formula below.
+The title line shows `Complexity` and `Est. context`; drop the mini diagram if the task does not interact.
 
-## Size each task
+| Field | Rule |
+|---|---|
+| `Owns` | Exact paths, only this task's. Two tasks that can run at once never share a file. |
+| `Components` | Integer count of components the task builds. |
+| `LOC owned` | Integer estimate of lines this task writes. |
+| `Tests` | `fast` or `slow` (browser, server and I/O suites are slow, pure functions fast). |
+| `Model` | `sonnet` by default; `opus` only for Complexity 7+ or security-sensitive code. |
+| `Est. time` | `predict.py` recomputes it from the four fields above, and the fields win on disagreement. Write them honestly. |
+| `Est. context` | `18k + 3.3k + 21.6 per LOC owned + 0.45 per char of docs handed over + 36.9 per LOC read`, plus a 10-15% margin. Over 80k means split. |
+| `Consumes`/`Produces` | Exact names, parameter types and return types. An implementer reads only its own task, so this is how it learns what neighbors named things. |
+| `Review Focus` | Cases from the Review Focus section that touch this task's files, as named tests (see below). |
+| `Test code` | At `contracts`, each test named with exact inputs and outputs. At `tests` and `full`, the code, runnable as written. Include the error and edge cases the spec implies. `**Detail:** full` on one task overrides the header, for tricky cores. |
 
-`peak ≈ prefix + 3.3k + 21.6·LOC_owned + 0.45·chars_of_docs_handed_over + 36.9·LOC_of_interfaces_read`
+## Review Focus: the probe plan
 
-Prefix is 18k for an implementer. Rules of thumb: about 20 tokens per line written, 37 per line read (agents read whole files), 0.45 per char of spec or plan handed over, 0.5-1.6k per test cycle, plus a 10-15% margin. Round to the nearest k.
+Classify each package by app type, then pick its generic categories from the table. Add app-specific risks the domain implies (a spreadsheet: circular references through ranges, huge-range timing, CSV formula injection; a site generator: path traversal in slugs, template recursion).
 
-- **Ceiling:** peak above 80k means split the task, or move its reading to an Explore pass that returns a summary.
-- **Floor:** variable part (peak minus prefix) under the prefix, about 18k, means merge it with a same-wave neighbor it shares interfaces with, as long as the merged task stays under the ceiling.
-- **Wave width:** at most 5 tasks per wave.
+| App type | Generic categories |
+|---|---|
+| library / parser / evaluator | deep, numeric, encoding, state |
+| CLI | protocol (commands and args), encoding, state, file |
+| HTTP service | protocol, encoding, numeric, state |
+| web UI | protocol via its API, encoding (rendering, XSS) |
+| file I/O / generator | file, encoding, deep |
+| data pipeline | numeric, encoding, state, deep |
+| concurrency | state (races, partial writes), protocol |
+| auth | protocol, state; **security review required** (Opus) |
 
-## Assign waves
+Rules:
+- List, per package: app type, categories, specific risks.
+- Copy into each task the cases that touch its files, as named tests with exact inputs and outcomes. The implementer writes them during TDD, so the failures never reach review (lever 1).
+- Never list the spec's own examples: tests already cover them.
+- A **`**Probe entry:**` line per package** feeds the generated probe adapter, for example `call=minisheet.Workbook.set · run=python -m minisheet · serve=minisheet.server.create_server`. Use `call=` for libraries, `run=` for CLIs, `serve=` for servers. No agent writes adapters.
 
-These are the orchestrator rules. Apply them to every task, after sizing.
+## Plan size cap: 15k characters
 
-- A wave is a set of tasks that share no files and need none of each other's output.
-- A task waits for an earlier task if its code or tests import that task's files, or if it documents what that task built.
-- A task that needs only a name from an earlier task (a route path, a CLI flag) and whose own tests do not run that code goes in the same wave. List the name in both tasks' Interfaces.
-- At most 5 tasks per wave. Split a larger wave in two.
-- Disjoint files share one checkout. If two same-wave tasks might touch one file, move one to the next wave.
+The plan rides in the shared prime and is written on the critical path. Keep contracts, verbatim tests and the required diagrams. Move spec excerpts out and reference them by section. Check with `wc -c`.
 
-Integration tasks (the layer that wires the modules together) are usually the last wave.
-
-## Plan size budget
-
-The whole plan must be at most 25k chars, because it becomes the shared prime every implementer reads. Check with `wc -c`. If it is over, keep the contracts and tests in the plan and have tasks reference the spec by section instead of restating it.
 ## No placeholders
 
-These are plan failures: "TBD", "TODO", "add error handling", "handle edge cases", "similar to Task N", a test without a name and an asserted value, or a type or function that no task defines.
+These are plan failures: "TBD", "TODO", "add error handling", "handle edge cases", "similar to Task N", a test without a name and an asserted value, or a type or function no task defines.
+
+## After writing: schedule, then lint
+
+Run both. Replace `PLAN` and `SPEC` with the paths.
+
+```
+python <skill-dir>/../subagent-driven-development/scripts/plan_tools.py schedule --plan PLAN --insert
+python <skill-dir>/../subagent-driven-development/scripts/plan_tools.py lint --plan PLAN --spec SPEC
+```
+
+`schedule --insert` writes the Gantt and its summary line (critical path, peak width, predicted total) under a `%% schedule` marker. Never hand-edit that block.
+
+Read the lint output:
+- **`MISSED TARGET`** is a warning, not a failure. Consider re-splitting or stubbing the tasks on the named critical path. If the chain is inherently sequential, accept the plan and record `Ruling: <why>`. The warning and the ruling go to the approval gate.
+- **Every other error must be fixed**: placeholders, Consumes/Produces mismatches, diagram parse errors, size caps, over-3-min or mergeable tasks, spec sections with no task. Edit the plan, rerun `schedule --insert` then `lint`, until only `MISSED TARGET` (or nothing) remains.
 
 ## Self-review checklist
 
-Run it yourself, as a checklist and not a subagent. Fix problems in place, with no re-review.
+Run it yourself, not as a subagent. Fix in place, with no re-review.
 
-1. **Coverage:** every spec requirement maps to a task. Add the missing task.
-2. **Placeholders:** none from the list above.
-3. **Type consistency:** every name and signature in a Consumes line matches the Produces line of the task that defines it. `clearLayers` in Task 3 and `clearFullLayers` in Task 7 is a bug.
-4. **Wave conflicts:** no two same-wave tasks share a file or an import. No wave has more than 5 tasks.
-5. **Estimates:** every task has an `Est. context` inside the band (variable part at least the prefix, peak at most 80k), and the plan is at most 25k chars.
+1. **Coverage:** every spec requirement maps to a task.
+2. **Placeholders:** none.
+3. **Type consistency:** each Consumes line matches the Produces line of its owner. `clearLayers` in T3 and `clearFullLayers` in T7 is a bug.
+4. **Graph:** every edge is an execution dependency, with no cycles, and no two tasks that can run at once share a file.
+5. **Measurable fields:** every task has `Components`, `LOC owned`, `Tests`, `Model`.
+6. **Review Focus:** each package has an app type, categories and a `Probe entry`, and each task carries the cases for its files.
+7. **Limits:** the plan is at most 15k chars, no task is predicted over 3 min, and schedule and lint have run.
 
 ## Handoff
 
-Do not ask about an execution method. The default is `superlite:subagent-driven-development`, which has its own inline mode for small plans. If called from brainstorming, return to it for the single approval. Otherwise give the path and wait for the user's go-ahead, unless they pre-approved (then record any open choice as `Ruling: ...` and proceed).
+Do not ask about an execution method. The default is `superlite:subagent-driven-development`, which has its own inline mode for small plans. If called from brainstorming, return to it for the single approval. Otherwise give the path and wait for the go-ahead, unless the user pre-approved, in which case record any open choice as `Ruling: ...` and proceed.
 
 ## Red flags
 
 | Thought | Reality |
 |---|---|
 | "I'll paste the full code so Sonnet can't go wrong" | `tests` is the default. `full` is for non-obvious algorithms. |
-| "Task 5 can be sequential, to be safe" | If the rules allow a shared wave, use it. Needless sequencing is the slow path. |
-| "Tests: cover the parser" | Name each test and the exact value it asserts. |
-| "Its README can go in wave 1" | Docs wait for the code they describe. |
+| "T5 can wait for T2, to be safe" | An edge is for code its tests execute. A stub or a name does not need one. |
+| "Draw a diagram for every module" | Only for interactions. Self-contained modules get none. |
+| "I'll write `Est. time` by gut feel" | Fill in the measurable fields. The predictor and the schedule depend on them. |
+| "Lint says MISSED TARGET, so the plan is bad" | It is a warning. Re-split or write a `Ruling:`. |
+| "Its README can go in the first wave" | Docs wait for the code they describe. |
