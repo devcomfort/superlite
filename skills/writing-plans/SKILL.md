@@ -11,9 +11,9 @@ Any build with 2+ tasks runs through `superlite:subagent-driven-development`: lo
 
 Save to `docs/plans/YYYY-MM-DD-<topic>.md`. When called from `superlite:brainstorming`, append to its doc instead. If the spec covers independent subsystems, write one plan per subsystem.
 
-## Section by section
+## Lint, extract what's stable, fix the rest
 
-Write and approve the plan one section at a time; dispatch starts as each is approved, while the next is discussed. Mark each unapproved task block `**Status:** draft` (none, or `approved`, once approved). `next_tasks` and `dispatch` skip draft tasks and their dependents; lint and `taskgraph` accept partial plans (draft tasks may keep placeholders, approved ones may not). Approve a section only when its Produces/Consumes interfaces are frozen; a later change to an interface an approved task consumes becomes a follow-up fix task, not a restart. Lint, schedule and stubs run per section. With a pre-approved run, still approve section by section: dispatch the first section once written and linted.
+`lint --stable` splits the plan into STABLE and FIX tasks (with reasons) and writes `.superlite/stable.json`. A task is stable when its own checks pass, every Consumes has a clean Produces line somewhere (even in an unstable task), it has no taskgraph edge to an unstable task, and it is not on a flagged `CHAIN:`. Plan-level issues (SPEC coverage, `CHAIN:`, the size cap, `MISSED TARGET`) never block stable tasks. `dispatch` offers only stable tasks: the coordinator dispatches them at once, patches only the FIX tasks (edits, never full rewrites), re-lints, and dispatches the newly stable ones. Stable and dispatched tasks have frozen interfaces; a later change is reported as `FROZEN:` and becomes a follow-up fix task, not a restart. `**Status:** draft` stays as an optional manual hold: `next_tasks` and `dispatch` skip draft tasks and their dependents, and draft tasks may keep placeholders.
 
 ## Plan shape, in this order
 
@@ -55,10 +55,9 @@ Here T1, T2 and T3 run in parallel; T2 and T3 build against T1's stubs, not its 
 1. **Interface stubs in Wave 0.** Wave 0 holds the skeleton (manifest, package inits, test config, shared error types) and interface stubs for every `Produces` another task consumes. `plan_tools.py stubs` generates them from your `Produces` lines, so write those lines exactly as `module.function(args) -> ret` or `Class.method(args) -> ret`, with a one-line contract in the task. The stub is the contract: implementers may not change a signature without a coordinator ruling.
 2. **A task waits only when its tests execute another task's code.** Consumers test against stubs with small fakes, never against the real producer. Integration tests that run both sides go in one small integration task per package at the end, so the consumers themselves don't wait. Consumers' own tests still run against the real producer later, through the seam check (`SUPERLITE_REAL=1`). A chain like parser → evaluator → workbook → CLI becomes one wave of four tasks against stubs, plus the integration task.
 2a. **Keep the chain short.** Lint fails with `CHAIN:` when the predicted critical path is over 2.5 times its longest task (with 3 or more tasks on it). Stub more interfaces, or add `Ruling: sequential - <why>` when the order really is forced, such as a migration before its users.
-3. **Cap the longest task at about 3 min.** Split over-3-min tasks along their components, for example a server+UI task becomes server (against the workbook stub) and UI (against the spec's JSON contract).
-4. **Merge tasks smaller than an agent's overhead.** An agent costs about 18k tokens and 30-60 s to start. If the variable part (Est. context minus 18k) is under about 18k, or the task takes under a minute, merge it with a related task in the same package, unless that lengthens the critical path or breaks the 80k limit.
-5. **Slow tests stay out of the inner loop.** Mark them `Tests: slow`. Implementers run only fast tests during TDD, and slow suites run once in the background after commit.
-6. **Diagrams are for approval.** The graph and schedule show the width and length of the run before anything runs, when a bad split is cheapest to fix.
+3. **Keep every task inside the size band.** The only measure is predicted time, held in `config/predictor.json` as `size_band` (low_min 1.5, high_min 6.0). Over high_min lint fails `SIZE:`: split along components, for example a server+UI task becomes server (against the workbook stub) and UI (against the spec's JSON contract). Under low_min it prints `NOTE:` (consider merging with a related task in the same package) and never fails. `predict --refit` moves the band from measured task times. The 80k context ceiling stays.
+4. **Slow tests stay out of the inner loop.** Mark them `Tests: slow`. Implementers run only fast tests during TDD, and slow suites run once in the background after commit.
+5. **Diagrams show the run.** The graph and schedule show the width and length of the run before anything runs, when a bad split is cheapest to fix.
 
 ## Task template
 
@@ -132,20 +131,21 @@ The plan rides in the shared prime and is written on the critical path. Keep con
 
 These are plan failures: "TBD", "TODO", "add error handling", "handle edge cases", "similar to Task N", a test without a name and an asserted value, or a type or function no task defines.
 
-## After writing: schedule, then lint
+## After writing: schedule, then lint --stable
 
 Run both. Replace `PLAN` and `SPEC` with the paths. `<superlite-root>` is two levels above this skill's "Base directory for this skill: ..." path (run it through `cygpath -u` first if that exists).
 
 ```
 bash "<superlite-root>/skills/subagent-driven-development/scripts/sl" plan_tools schedule --plan PLAN --insert
-bash "<superlite-root>/skills/subagent-driven-development/scripts/sl" plan_tools lint --plan PLAN --spec SPEC
+bash "<superlite-root>/skills/subagent-driven-development/scripts/sl" plan_tools lint --plan PLAN --spec SPEC --stable
 ```
 
 `schedule --insert` writes the Gantt and its summary line (critical path, peak width, predicted total) under a `%% schedule` marker. Never hand-edit that block.
 
 Read the lint output:
-- **`MISSED TARGET`** is a warning, not a failure. Consider re-splitting or stubbing the tasks on the named critical path. If the chain is inherently sequential, accept the plan and record `Ruling: <why>`. The warning and the ruling go to the approval gate.
-- **Every other error must be fixed**: placeholders, Consumes/Produces mismatches, diagram parse errors, size caps, over-3-min or mergeable tasks, spec sections with no task. Edit the plan, rerun `schedule --insert` then `lint`, until only `MISSED TARGET` (or nothing) remains.
+- **`MISSED TARGET`** is a warning, not a failure. Consider re-splitting or stubbing the tasks on the named critical path. If the chain is inherently sequential, accept the plan and record `Ruling: <why>`.
+- **`NOTE:`** (under low_min) is advice only.
+- **Every other error must be fixed**: placeholders, Consumes/Produces mismatches, diagram parse errors, `SIZE:` (over high_min), `CHAIN:`, `KIND:`, `OPUS-TASK:`, spec sections with no task. Patch the FIX tasks listed under `--stable`, rerun `schedule --insert` then `lint --stable`, until only `MISSED TARGET` and `NOTE:` remain. Stable tasks need no rework and can already be dispatched.
 
 ## Self-review checklist
 
@@ -157,11 +157,11 @@ Run it yourself, not as a subagent. Fix in place, with no re-review.
 4. **Graph:** every edge is an execution dependency, with no cycles, and no two tasks that can run at once share a file.
 5. **Measurable fields:** every task has `Components`, `LOC owned`, `Tests`, `Model`.
 6. **Review Focus:** each package has an app type, categories and a `Probe entry`, and each task carries the cases for its files.
-7. **Limits:** the plan is at most 15k chars, no task is predicted over 3 min, and schedule and lint have run.
+7. **Limits:** the plan is at most 15k chars, no task is over the size band (`SIZE:`), and schedule and lint have run.
 
 ## Handoff
 
-Do not ask about an execution method: it is `superlite:subagent-driven-development` (its inline mode covers small plans). If called from brainstorming, return to it for the single approval. Otherwise give the path and wait for the go-ahead, unless the user pre-approved, in which case record any open choice as `Ruling: ...` and proceed.
+Do not ask about an execution method: it is `superlite:subagent-driven-development` (its inline mode covers small plans). If called from brainstorming, return to it for the single approval; the stable set dispatches as soon as it is approved. Otherwise give the path and wait for the go-ahead, unless the user pre-approved, in which case record any open choice as `Ruling: ...` and proceed.
 
 ## Red flags
 
