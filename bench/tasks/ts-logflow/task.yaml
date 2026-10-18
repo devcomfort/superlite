@@ -1,0 +1,4 @@
+language: typescript
+extensions: [.ts]
+src_dirs: [src]
+needs_node: true
