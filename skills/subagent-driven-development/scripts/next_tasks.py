@@ -37,8 +37,9 @@ def sl_command(tool, *args):
 
 
 def run_tool(tool, *args):
+    env = {**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}  # cp1252 pipes on Windows
     return subprocess.run(sl_command(tool, *args), capture_output=True, text=True,
-                          encoding="utf-8", errors="replace")
+                          encoding="utf-8", errors="replace", env=env)
 
 
 def taskgraph(plan):

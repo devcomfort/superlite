@@ -9,6 +9,8 @@
 # fail the version check. If no Python works, sl says so once and exits 3, and the
 # caller logs the gap and continues without that tool.
 set -u
+# UTF-8 pipes on every platform (Windows defaults Python 3.12 stdout to cp1252).
+export PYTHONUTF8=1 PYTHONIOENCODING=utf-8
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 tool="${1:-}"
