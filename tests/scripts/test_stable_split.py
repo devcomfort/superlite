@@ -218,3 +218,12 @@ def test_stable_json_is_anded_with_the_draft_filter(tmp_path):
     (tmp_path / ".superlite").mkdir()
     (tmp_path / ".superlite" / "stable.json").write_text(json.dumps({"stable": ["T2", "T3"]}), encoding="utf-8")
     assert _lines(run(NEXT_TASKS, "--plan", p, cwd=tmp_path)) == ["T2"]
+
+
+def test_producer_note_after_task_ids_is_not_part_of_the_signature():
+    # w3 first draft: "... -> HTTPServer (T14, names only)" was read as return type "HTTPServer (T14, names only)".
+    import plan_tools as pt
+    sig = pt.parse_signature("minisheet.server.create_server(wb, port: int = 0) -> HTTPServer (T14, names only)")
+    assert sig["args"] == "wb, port: int = 0"
+    assert sig["ret"] == "HTTPServer"
+    assert pt.parse_signature("f(x) -> int (T4, T5)")["ret"] == "int"

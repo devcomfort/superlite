@@ -638,9 +638,13 @@ def insert_schedule(plan: Plan, rep: dict) -> None:  # O(L+C+n log n) total + fi
 # Signatures and stubs
 # --------------------------------------------------------------------------
 
+# A trailing "(T4)" / "(T4, T5)" / "(T14, names only)" names the producer; the note after the ids is ignored.
+REF_TAIL = r"\s+\((T\d+[a-z]*(?:\s*[,/]\s*T\d+[a-z]*)*)(?:\s*[,;:]\s*[^()]*)?\)\s*$"  # O(1)
+
+
 def parse_signature(item: str) -> dict | None:  # O(s) total
     s = strip_ticks(item)  # O(1)
-    s = re.sub(r"\s+\((T\d+[a-z]*(?:\s*[,/]\s*T\d+[a-z]*)*)\)\s*$", "", s)  # O(s)
+    s = re.sub(REF_TAIL, "", s)  # O(s)
     m = re.match(r"^([A-Za-z_][\w.]*)\s*\(", s)  # O(1)
     if not m:  # O(1)
         return None  # O(1)
@@ -1099,7 +1103,7 @@ def lint_plan(plan: Plan, args) -> tuple[list[str], list[str]]:  # O(n^2*k*s + e
             sig = parse_signature(item)  # O(s)
             if not sig:  # O(1)
                 continue  # O(1)
-            ref = re.search(r"\s+\((T\d+[a-z]*(?:\s*[,/]\s*T\d+[a-z]*)*)\)\s*$", strip_ticks(item))  # O(s)
+            ref = re.search(REF_TAIL, strip_ticks(item))  # O(s)
             refs = re.findall(TASK_ID, ref.group(1)) if ref else []  # O(s)
             cands = produced.get(sig_key(sig), [])  # O(1)
             if refs:  # O(1)
