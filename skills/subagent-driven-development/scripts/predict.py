@@ -21,7 +21,8 @@ from __future__ import annotations  # O(1)
 import argparse  # O(1)
 import glob  # O(1)
 import json  # O(1)
-import math  # O(1)
+import math
+import os  # O(1)
 import sys  # O(1)
 from pathlib import Path  # O(1)
 
@@ -60,8 +61,43 @@ def load_models(path=None) -> dict:  # O(S + M)
     return data  # O(1)
 
 
-def load_coef(path=None) -> dict:  # O(S)
-    return _load_json(Path(path) if path else CONFIG_DIR / "predictor.json", "predictor file")  # O(S)
+HISTORY_MIN_ROWS = 30  # rows with loc and duration needed before history replaces the shipped coefficients | O(1)
+_HIST_CACHE: dict = {}  # O(1)
+
+
+def history_observations(rows: list) -> list:  # O(R)
+    """Refit observations from history rows (aggregates only): loc, components, tests and duration."""
+    obs = []  # O(1)
+    for r in rows:  # O(R)
+        loc, secs = r.get("loc"), r.get("duration_s")  # O(1)
+        if isinstance(loc, (int, float)) and isinstance(secs, (int, float)) and secs > 0:  # O(1)
+            obs.append({"components": float(r.get("components") or 1.0), "loc": float(loc), "slow": r.get("tests") == "slow",  # O(1)
+                        "model": r.get("model"), "actual": secs / 60.0, "overhead": None})
+    return obs  # O(R)
+
+
+def load_coef(path=None) -> dict:  # O(S) shipped; O(R) with enough history
+    """Shipped coefficients; with no explicit path and at least HISTORY_MIN_ROWS usable history rows
+    (`$SUPERLITE_HOME/history.jsonl`) the refit from history instead (deterministic: same rows, same fit)."""
+    coef = _load_json(Path(path) if path else CONFIG_DIR / "predictor.json", "predictor file")  # O(S)
+    if path:  # O(1)
+        return coef  # O(1)
+    try:  # history never breaks a prediction | O(1)
+        import history  # O(1)
+        hp = history.home() / "history.jsonl"  # O(1)
+        key = (str(hp), hp.stat().st_mtime_ns, hp.stat().st_size) if hp.is_file() else None  # O(1)
+        if key is None:  # O(1)
+            return coef  # O(1)
+        if key not in _HIST_CACHE:  # O(R)
+            obs = history_observations(history.read_rows(hp))  # O(R)
+            fitted = None  # O(1)
+            if len(obs) >= int(os.environ.get("SUPERLITE_HISTORY_MIN", HISTORY_MIN_ROWS)):  # O(1)
+                fitted, _ = refit(obs, load_models(), coef)  # O(R*M)
+                fitted["fit"]["source"] = "history"  # O(1)
+            _HIST_CACHE[key] = fitted  # O(1)
+        return _HIST_CACHE[key] or coef  # O(1)
+    except Exception:  # noqa: BLE001 | O(1)
+        return coef  # O(1)
 
 
 def resolve_model(name: str | None, models: dict, coef: dict) -> str:  # O(M)

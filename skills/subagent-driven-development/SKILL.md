@@ -16,15 +16,6 @@ Shorthand used below (every agent brief states `SUPERLITE=<path>`):
 
 ## Setup
 
-```mermaid
-flowchart LR
-  B[branch + start SHA] --> K[wave0: T0 skeleton agent]
-  B --> P[build_prime, first batch primed]
-  K --> A[adapter]
-  P -. READY .-> T[first tasks]
-  K --> T
-```
-
 - Branch `superlite/<topic>` if on the default branch (no worktree). Write the start SHA to `.superlite/progress.md` (`- start <sha>`). `commit_task` adds `.superlite/` to `.git/info/exclude` itself.
 - Wave 0 is never yours: `lint --stable` builds `.superlite/briefs/wave0.md` from the plan and prints `START FIRST:` with the Agent line for `superlite:implementer-haiku` (T0; `bash "$SL" wave0 --plan $PLAN` reprints it). Send it first in the same message as the stable set; commit with `commit_task T0`. No skeleton files by you; tasks do not wait for T0. Then `bash "$SL" plan_tools adapter --plan $PLAN`.
 - Prime now: `bash "$SL" build_prime --plan $PLAN --spec SPEC --sections "1,3"` prints `hash size` and writes `.superlite/prime.md`. Start the first ready tasks' agents now. Never retype the prime (a byte change breaks the cache).
@@ -32,15 +23,6 @@ flowchart LR
 - Graphify: `bash "$SL" graphify_gate` prints JSON. `use` false: skip. Installed: `graphify update .`. `needs_install` and `allowed`: `uv tool install graphifyy`, `graphify extract . --code-only`. You alone run `graphify update .` after each package commits.
 
 ## Planning check
-
-```mermaid
-flowchart LR
-  S[schedule --insert] --> L[lint]
-  L -- MISSED TARGET --> R{re-split / stub, or Ruling}
-  R --> S
-  L -- DISPATCH NOW --> D[dispatch whole stable set]
-  D --> F[then patch FIX tasks] --> L
-```
 
 Fixed order, nothing waits on plan polishing: write plan -> `bash "$SL" plan_tools schedule --plan $PLAN --insert` (target from the plan header) -> `bash "$SL" plan_tools lint --plan $PLAN --spec SPEC --stable` (lists STABLE and FIX tasks, writes `.superlite/stable.json`; prints `SEND BEFORE ANY PLAN EDIT:`, ends with `DISPATCH NOW: T2 T4` or `none`) -> `dispatch` and start every task on that line in the same turn -> only then patch the FIX tasks (edits or a full rewrite, as many rounds as needed) -> re-lint -> dispatch the newly stable tasks -> repeat until lint passes. No agent waits on plan polishing: never patch, rewrite or re-lint while a `DISPATCH NOW` task is unsent.
 
@@ -108,9 +90,13 @@ flowchart TB
 4. Red suite lines are findings too. Send all to fixers (`fixing.md`: tier by understanding, split by file), then `commit_task Tn` per owning task and one more `run_tests --background`. Leftovers become a `Ruling:`. No second review round.
 5. Right before the final commit, `bash "$SL" run_tests --wait` once; green means freeze.
 
+## Measure and budget
+
+Hooks write `.superlite/metrics.jsonl`; details in `metrics.md`. `lint` and `dispatch` print `budget:` lines when they change (`**Budget-usd:**` in the plan header is the cap). At `WARN` finish what is in flight; at `OVER CAP` start no extra review rounds and no fix rounds beyond the first, then `commit_task` and finish. `LATE: critical path ...` names the task to unblock first.
+
 ## Freeze, rulings, finish
 
-After a green suite: freeze. Archive `.superlite/incidents.jsonl` and `progress.md` next to the plan; commit by name. Run `bash "$SL" finish`; print its rulings in your closing message under "Rulings I made", each with its cost. Then invoke `superlite:finishing-a-development-branch`.
+After a green suite: freeze. Archive `.superlite/incidents.jsonl` and `progress.md` next to the plan; commit by name. Run `bash "$SL" finish --plan $PLAN`; print its rulings in your closing message under "Rulings I made", each with its cost. Then invoke `superlite:finishing-a-development-branch`.
 
 ## Stop conditions
 

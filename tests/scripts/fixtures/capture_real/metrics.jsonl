@@ -1,0 +1,2 @@
+{"ev": "stop", "t": 1792348959810, "agent_id": "ae7f0867c74d43e1c", "type": "general-purpose", "transcript": "@TRANSCRIPT@", "last": "done"}
+{"ev": "launch", "t": 1792348960125, "agent_id": "ae7f0867c74d43e1c", "type": "general-purpose", "model": "claude-sonnet-5-5", "desc": "T1 echo check"}

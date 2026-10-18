@@ -38,7 +38,7 @@ def task_features(task, focus, cp, times) -> dict:  # O(k*s + pkgs)
     parts = {seg.lower() for o in task.owns for seg in re.split(r"[/.]", o)}  # O(o)
     cats = {c for pkg, cases in focus.items() if pkg in parts for c in cases}  # O(pkgs)
     kind = f.get("kind", "design")  # O(1)
-    return {"kind": kind, "loc": f.get("loc"), "components": f.get("components"), "tests": f.get("tests"),  # O(1)
+    return {"task": task.id, "band": __import__("history").band_of(kind, f.get("loc"), f.get("tests")), "kind": kind, "loc": f.get("loc"), "components": f.get("components"), "tests": f.get("tests"),  # O(1)
             "focus": cats, "time": times.get(task.id), "critical_path": task.id in cp,
             "mechanical": kind == "mechanical" and not pt.not_mechanical_reasons(task, focus)}
 
@@ -66,10 +66,19 @@ def matches(when: dict, ft: dict) -> bool:  # O(keys)
 NEVER_ON_CRITICAL_PATH = frozenset({"haiku"})  # fixed rule (user ruling), not configurable | O(1)
 
 
-def pick_tier(ft: dict, cfg: dict) -> str:  # O(r)
+def pick_tier(ft: dict, cfg: dict, stats=None, gated=None) -> str:  # O(r)
     default = cfg.get("default_tier", "sonnet")  # O(1)
     tier = _first_rule(ft, cfg)  # O(r)
-    return default if ft.get("critical_path") and tier in NEVER_ON_CRITICAL_PATH else tier  # O(1)
+    if ft.get("critical_path") and tier in NEVER_ON_CRITICAL_PATH:  # O(1)
+        return default  # O(1)
+    gate = cfg.get("stats_gate") or {}  # measured history: a band with enough samples and a low pass rate stays on the default tier | O(1)
+    if stats and gate and tier != default:  # O(1)
+        s = (stats.get("bands_by_tier") or {}).get(f"{tier}|{ft.get('band')}") or {}  # O(1)
+        if s.get("n", 0) >= gate.get("min_n", 8) and s.get("ftp_rate") is not None and s["ftp_rate"] < gate.get("min_first_time_pass", 0.8):  # O(1)
+            if gated is not None:  # O(1)
+                gated.append(ft.get("task"))  # O(1)
+            return default  # O(1)
+    return tier  # O(1)
 
 
 def _first_rule(ft: dict, cfg: dict) -> str:  # O(r)
@@ -85,13 +94,14 @@ def _first_rule(ft: dict, cfg: dict) -> str:  # O(r)
     return cfg.get("default_tier", "sonnet")  # O(1)
 
 
-def compute_tiers(plan, cp, times, cfg=None) -> dict:  # O(n*(k*s + r))
-    """{task id: tier} for every approved task. cp = critical-path ids, times = predicted minutes."""
+def compute_tiers(plan, cp, times, cfg=None, stats=None, gated=None) -> dict:  # O(n*(k*s + r))
+    """{task id: tier} for every approved task. cp = critical-path ids, times = predicted minutes, stats = history
+    stats (bands_by_tier), gated = list that receives the tasks kept off a tier by the stats gate."""
     import plan_tools as pt  # O(1)
     cfg = cfg or load_cfg()  # O(file)
     focus = pt.review_focus_cases(plan)  # O(L)
     cp = set(cp)  # O(n)
-    return {t.id: pick_tier(task_features(t, focus, cp, times), cfg)  # O(n)
+    return {t.id: pick_tier(task_features(t, focus, cp, times), cfg, stats, gated)  # O(n)
             for t in plan.tasks if t.status != "draft"}
 
 
@@ -100,7 +110,8 @@ def tiers_for_plan(plan_path: str, cfg=None) -> dict:  # O(schedule + n*(k*s + r
     plan = pt.Plan.load(plan_path)  # O(L)
     args = pt.build_parser().parse_args(["schedule", "--plan", plan_path])  # O(1)
     rep = pt.schedule_report(plan, args)  # O(n*(n+e))
-    return compute_tiers(plan, rep["critical_path"], rep["times"], cfg)  # O(n*(k*s + r))
+    import history  # O(1)
+    return compute_tiers(plan, rep["critical_path"], rep["times"], cfg, history.project_stats(pt.stable_root(plan_path) / ".superlite"))  # O(n*(k*s + r))
 
 
 KIND_MISS = re.compile(r"kind-miss\s+(T\d+[A-Za-z]?)")  # O(1)

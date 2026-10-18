@@ -161,6 +161,11 @@ def main(argv=None):  # O(c + L + n + e + R*a*(F + o))
     a = ap.parse_args(argv)  # O(1)
     plan = a.plan or load_pool(a.pool).get("plan") or nt.DEFAULT_PLAN  # O(pool bytes)
     render(*run(plan, a.pool, a.ledger, a.committed, a.running, a.cap))  # see run
+    try:  # the budget line when it changed (needs .superlite/metrics.jsonl) | O(compute)
+        import budget  # O(1)
+        budget.maybe_print(plan, str(Path(a.pool).parent))  # O(compute)
+    except Exception:  # noqa: BLE001 | O(1)
+        pass  # O(1)
     return 0  # O(1)
 
 
