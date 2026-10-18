@@ -12,11 +12,11 @@ content=$(cat "${PLUGIN_ROOT}/skills/using-superlite/SKILL.md" 2>&1 || echo "Err
 
 escape_for_json() {  # O(s)
     local s="$1"  # O(s)
-    s="${s//\/\\}"  # O(s)
+    s="${s//\\/\\\\}"  # O(s)
     s="${s//\"/\\\"}"  # O(s)
-    s="${s//$'\n'/\n}"  # O(s)
-    s="${s//$'\r'/\r}"  # O(s)
-    s="${s//$'\t'/\t}"  # O(s)
+    s="${s//$'\r'/}"  # O(s) drop CR: a CRLF checkout must not change the text
+    s="${s//$'\n'/\\n}"  # O(s)
+    s="${s//$'\t'/\\t}"  # O(s)
     printf '%s' "$s"  # O(s)
 }  # O(1)
 
