@@ -101,7 +101,7 @@ flowchart TB
 
 1. Gate: every task committed, every review reported and committed, every seam `verified`.
 2. Build the packet now: `bash "$SL" plan_tools packet --plan $PLAN --base <start-sha>` uses the existing `.superlite/test-summary.json`, the probe results and the incidents, and writes `.superlite/review-packet.md`. Its header says `FAST PATH` or `REVIEW REQUIRED` and whether the test summary is from the full suite or the last fast run. In the same message start `bash "$SL" run_tests --full --background`; do not wait for it before the packet or the reviewer.
-3. Start `superlite:final-reviewer` at the same moment, fresh, brief = `SUPERLITE=<path>` and "read .superlite/review-packet.md", nothing more. The tree stays frozen. It answers in one turn, no tools, findings only: `Verdict: APPROVED` or `CHANGES_REQUESTED` plus `file:line - problem - fix` lines.
+3. Start `superlite:final-reviewer` at the same moment, fresh, brief = `SUPERLITE=<path>` and "read .superlite/review-packet.md", nothing more. The tree stays frozen. It answers in one turn, reading only the packet, findings only: `Verdict: APPROVED` or `CHANGES_REQUESTED` plus `file:line - problem - fix - tier N` lines.
 4. Red suite lines are findings too. Send all findings to fixers (`fixing.md`: tier by understanding, split by file), then `commit_task Tn` per owning task and one more `run_tests --background`. Leftovers become a `Ruling:` in the closing message. No second review round.
 5. Right before the final commit, `bash "$SL" run_tests --wait` once; green means freeze.
 

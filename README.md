@@ -28,8 +28,17 @@ Superlite uses one approval gate, plans that carry contracts instead of code, a 
 Agents (`agents/`):
 
 - `implementer` (sonnet, medium): builds one task, then stays idle for reuse.
+- `implementer-haiku` (haiku, high): builds one `Kind: mechanical` task (fully specified, small, fast tests) exactly as written; stops rather than guesses.
 - `package-reviewer` (sonnet, medium): reviews one committed task or one package, then fixes its own findings with regression tests.
-- `final-reviewer` (opus, high): a fresh one-turn reviewer that reads only the review packet, with no tools.
+- `final-reviewer` (opus, high): a fresh one-turn reviewer that reads only the review packet (Read, Grep, Glob). It returns findings, each with a fix tier, and never fixes.
+- `fixer-haiku` (haiku, high): tier 1, fully specified fixes (exact `file:line` and change).
+- `fixer-sonnet` (sonnet, medium): tier 2, cause known, fix confined to one module.
+- `fixer-sonnet-high` (sonnet, high): tier 3, cause known but the fix spans modules or a seam, or a known probe class.
+- `fixer-opus` (opus, high): tier 4, cause unknown (it diagnoses), or a lower tier failed twice.
+
+### How a run works
+
+The coordinator (Opus, medium effort) never edits code or runs raw tests. `writing-plans` produces a task graph section by section, and each approved section is dispatched while the next is discussed. `dispatch` pairs every ready task with an idle agent: Sonnet implementers, or Haiku for `Kind: mechanical` tasks. Consumers build against interface stubs, and integration is one task per package. `commit_task` commits each task's own files and starts probes and seam checks, and all test runs happen in the background into `.superlite/test-summary.json`. Tasks get a package review selectively or per package, and once a package is the last one building, each task is reviewed as it commits. A review packet (incidents, probe failures, test summary, source excerpts) goes to one fresh `final-reviewer`, which returns tiered findings. Fixers take them by tier. Each round rewrites a note in `.superlite/fixes/<id>.md`, and a lower tier that fails twice escalates to a fresh agent primed by the note. After one wait for the suite, the run freezes and `finish` lists the rulings. Design and decisions: `C:\Work\Planning\Specs\2026-10-17-superlite-architecture-design.md` (§3.0, §12).
 
 ### Tools
 
@@ -44,7 +53,7 @@ Mechanical steps are scripts, not agents. Every tool runs as `bash <skill-dir>/s
 | `next_tasks` | Computes which tasks are ready |
 | `assign` | Scores idle agents and picks the most relevant one |
 | `commit_task` | Checks scope and commits one or more tasks' owned files; `--dispatch` also prints the next dispatch |
-| `run_tests` | Runs the tests (replaces the old test-runner agent) |
+| `run_tests` | Runs the tests, with `--background` (the design runs every suite that way), then `--wait` for the summary; replaces the old test-runner agent |
 | `pt_review` | Decides which tasks get their own review and which are batched per package |
 | `incident` | Records and queries the shared incident log (file, line, context) |
 | `graphify_gate` | Gates Graphify for search in non-trivial codebases |
@@ -55,7 +64,7 @@ Robustness probes run through `probes/probe_run.py` with the probe pack in `prob
 ## Configuration
 
 - **`detail` (plan switch).** `writing-plans` records `**Detail:** contracts | tests | full` in the plan header, and a task can override it. `contracts` gives files, signatures and named tests with exact values. `tests` (the default) adds the test code verbatim and leaves the implementation to the implementer. `full` includes implementation code too, for tricky algorithms. `brainstorming` asks for it in its single batched question, and picks the default itself when unattended.
-- **Final review.** The coordinator runs at medium effort. The final review is a fresh Opus `final-reviewer` at high effort: one turn, no tools, reading a review packet built from the logs, with a target under 30 s. It is not a fork, so `CLAUDE_CODE_FORK_SUBAGENT` is not needed.
+- **Final review.** The coordinator runs at medium effort. The final review is a fresh Opus `final-reviewer` at high effort: one turn, findings only, reading a review packet built from the logs, with a target under 30 s. It is not a fork, so `CLAUDE_CODE_FORK_SUBAGENT` is not needed.
 - **Implementer cache TTL.** The implementer's frontmatter sets a 1-hour prompt cache TTL, so its history is still cached when fix rounds arrive waves later. Setting `CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL=1h` in the environment does the same.
 - **Context-budgeted sizing.** Each task in a plan carries an `Est. context` line, predicted from the lines it writes, the lines it reads and the docs it is handed, on top of the implementer's fixed ~18k prefix. Tasks predicted above 80k are split, tasks whose variable part is smaller than the prefix are merged with a neighbor, no task is predicted to run longer than about 3 minutes, there is no fixed wave size (the task graph sets the parallel width), and the whole plan stays under 15k chars because it doubles as the shared prime. The coefficients are fit on one project, so treat them as a guide.
 
@@ -63,7 +72,7 @@ Robustness probes run through `probes/probe_run.py` with the probe pack in `prob
 
 Installation differs by harness. If you use more than one, install superlite separately for each one. Every integration loads `using-superlite` at session start; to verify, open a fresh session and send `Let's make a react todo list`. A working install triggers `brainstorming` before any code is written.
 
-Each harness has a tool-mapping file in `skills/using-superlite/references/` (Antigravity, Codex, Gemini, Hermes, Muse, Pi, plus Claude Code notes). Where a harness has no plugin agents, `implementer`, `package-reviewer` and `final-reviewer` run as that harness's generic subagent with `agents/<name>.md` as its instructions.
+Each harness has a tool-mapping file in `skills/using-superlite/references/` (Antigravity, Codex, Gemini, Hermes, Muse, Pi, plus Claude Code notes). Where a harness has no plugin agents, each agent in `agents/` (`implementer`, `implementer-haiku`, `package-reviewer`, `final-reviewer` and the four fixers) runs as that harness's generic subagent with `agents/<name>.md` as its instructions.
 
 ### Claude Code
 
