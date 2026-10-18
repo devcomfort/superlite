@@ -45,22 +45,22 @@ Run `bash "$SL" plan_tools schedule --plan $PLAN --insert` (the target comes fro
 
 ```mermaid
 flowchart TB
-  N[next_tasks] --> A{assign}
+  N[dispatch] --> A{per ready task}
   A -- agent=ID --> M[task message]
-  A -- poll --> Q[relevance poll] --> M
+  A -- poll IDS --> Q[relevance poll] --> M
   A -- fresh --> P[prime verbatim] -- READY --> M
-  M --> D[DONE] --> C[commit_task] --> N
+  M --> D[DONE reports] --> C[commit_task T.. --dispatch] --> A
   C -. background .-> PR[probe_run --commit]
   C -. both sides in .-> SM[pt_review contract seam]
 ```
 
-Keep a `committed` and a `running` list and `.superlite/pool.json`: `{"agents":[{"id","tasks":[...],"files":[...],"context_k":N,"idle_min":N,"busy":false}]}`.
+Keep `.superlite/pool.json`: `{"agents":[{"id","tasks":[...],"files":[...],"context_k":N,"idle_min":N,"busy":false,"current":"Tn"}]}`. Sending a task or spawning its agent sets `busy: true` and `current: Tn`; `commit_task` clears `current` when it commits Tn. The ledger and `current` are the state: you keep no lists.
 
-1. `bash "$SL" next_tasks --plan $PLAN --committed T1,T2 --running T3 --cap 10` prints ready ids, longest first. Start all of them now; the rest start the moment any slot frees.
-2. Per id: `bash "$SL" assign --task Tn --pool .superlite/pool.json --plan $PLAN` prints one word. `agent=ID`: SendMessage the task to that idle agent. `poll`: one SendMessage to every eligible idle agent, "Relevance 0-10 for Tn (files, consumes)? Reply `score: N - reason`"; use the replies present at your next turn, highest wins, tie to the smallest `context_k`. `fresh`: Agent `superlite:implementer` with the prime file pasted verbatim, same bytes for the whole run, and send its task only after its reply `READY`. `evict=ID` lines on stderr: drop that agent from the pool. Busy agents are never candidates, work never queues behind an agent, and an agent past 3 tasks, 80k context or 50 idle minutes is not resumed.
+1. `bash "$SL" dispatch --plan $PLAN --cap 10` prints, per ready task, longest first: `Tn agent=ID`, `Tn poll ID,ID` or `Tn fresh`; no agent is on two lines. Start them all now.
+2. Per line: `agent=ID`: SendMessage the task to that idle agent. `poll ID,ID`: one SendMessage to each listed agent, "Relevance 0-10 for Tn (files, consumes)? Reply `score: N - reason`"; use the replies present at your next turn, highest wins, tie to the smallest `context_k`. `fresh`: Agent `superlite:implementer` with the prime file pasted verbatim, same bytes for the whole run, and send its task only after its reply `READY`. `evict=ID` (stderr): drop it from the pool. `dispatch` never offers a busy agent, or one past 3 tasks, 80k context or 50 idle minutes; work never queues behind an agent.
 3. Task message: heading (not the task text; the plan is in the prime), Owns and files not to touch, the Review Focus categories for its files, rulings and interface names, `SUPERLITE=<path>`, the verify command (`bash "$SL" run_tests --fast PATHS`), and "reply in at most 200 words: status DONE / DONE_WITH_CONCERNS / NEEDS_CONTEXT / BLOCKED, files, test result, open questions".
-4. Handle every pending report in one turn. DONE: `bash "$SL" commit_task Tn --plan $PLAN` commits only Tn's own files, prints the SHA and appends the ledger. Other tasks' files stay uncommitted, silently. Exit 1 lists files no task owns, and syntax or import problems: send those back to the agent. DONE_WITH_CONCERNS: fix correctness concerns before review. NEEDS_CONTEXT: answer. BLOCKED: log it, re-dispatch once on a fresh agent with `model: opus`, then take the task over yourself. Update `pool.json`, rerun `next_tasks`. 
-5. After a commit, `commit_task` has already started `probe_run --commit` and, for each seam whose two sides are now both committed, `pt_review contract --seam` in the background. A pass logs `verified`; a mismatch is an incident (nothing to run yourself). Assign the fix to the idle owner of one side, or to a `superlite:package-reviewer`.
+4. Handle every pending report in one turn. Mark reporters `busy: false`, then commit all DONE tasks in one call: `bash "$SL" commit_task T3 T5 --plan $PLAN --dispatch` commits each task's own files, prints `Tn <sha>` or `Tn FAILED` (one task: just the SHA), then `next:` and dispatch lines. A FAILED task lists unowned files or syntax/import problems: send them back to the agent. DONE_WITH_CONCERNS: fix correctness concerns before review. NEEDS_CONTEXT: answer. BLOCKED: log it, re-dispatch once on a fresh agent with `model: opus`, then take the task over yourself. Act on the `next:` lines.
+5. After a commit, `commit_task` has already started `probe_run --commit` and, for each seam whose two sides are now both committed, `pt_review contract --seam` in the background. A pass logs `verified`; a mismatch is an incident. Assign the fix to the idle owner of one side, or to a `superlite:package-reviewer`.
 6. Probe failures: `bash "$SL" incident hotspots --files <task files>` before assigning the next work. Open failures on a file go to the idle agent that owns it, with the fix and a regression test; `commit_task` accepts the generated `tests/regression/` files from whichever task commits.
 
 ## Reviews (D16)
@@ -81,8 +81,7 @@ flowchart LR
 ## Coordinator batching
 
 - One message per turn: all dispatches, a commit's reviews, background starts.
-- One turn for all pending reports; never one turn per report.
-- Longest predicted first; cap 10 concurrent; split anything predicted over 3 min.
+- Split anything predicted over 3 min.
 - Slow suites run once via `run_tests` after commit, never in an implementer's loop.
 
 ## Final review
@@ -118,8 +117,8 @@ Stop and ask only for: an irreversible or destructive operation; a security-sens
 | Thought or act | Do instead |
 |---|---|
 | Typing the prime or a fresh agent's task before READY | `build_prime`, paste verbatim, wait for READY |
-| Sending work to a busy agent, or "after T3" | `assign`; `fresh` when none is eligible |
-| Committing by hand or staging everything | `commit_task Tn` |
+| Sending work to a busy agent, or "after T3" | `dispatch` |
+| Committing by hand or staging everything | `commit_task T3 T5 --dispatch` |
 | Running the suite yourself, or through an agent | `run_tests`; read its one line |
 | Reviewing every task | Selective per task, else per package |
 | Final reviewer browsing or probing | Packet only; probes ran earlier |

@@ -7,1187 +7,1194 @@ Subcommands adapter, packet and contract live in pt_review.py (lazy import).
 Exit codes: 0 ok, 1 findings (stubs import failure, lint issues), 2 bad plan or usage.
 Stdlib only.
 """
-from __future__ import annotations
+# Complexity notation:
+# n = tasks in plan, e = dependency edges, L = lines in plan, C = chars in plan (<= 15k), b = fenced blocks
+# s = chars in one line/field/signature, k = field lines per task, o = owned paths per task, A = brace expansions
+# G = taskgraph lines, R = node mentions in taskgraph, M = distinct ids mentioned, d = deps of one task, c = lane cap
+# q = Produces/Consumes items per task, E = stub entries per file, f = stub files, S = lines in spec
+# B = chars in a mermaid block, P = placeholder patterns (7), w = warnings, r = ready tasks, cands = candidates
+# p = cost of one predict.predict_task call (external module)
+from __future__ import annotations  # O(1)
 
-import argparse
-import importlib.util
-import json
-import re
-import sys
-from dataclasses import dataclass, field
-from pathlib import Path
+import argparse  # O(1)
+import importlib.util  # O(1)
+import json  # O(1)
+import re  # O(1)
+import sys  # O(1)
+from dataclasses import dataclass, field  # O(1)
+from pathlib import Path  # O(1)
 
-SCRIPT_DIR = Path(__file__).resolve().parent
-CONFIG_DIR = SCRIPT_DIR.parent / "config"
-REVIEW_COMMANDS = ("adapter", "packet", "contract")
-IMPLEMENTER_PREFIX = 18000
-CTX_CEILING = 80000
-MERGE_MIN_VARIABLE = 18000
-MERGE_MIN_MINUTES = 1.0
-DEFAULT_CAP = 10
-DEFAULT_MAX_TASK_MIN = 3.0
-DEFAULT_MAX_CHARS = 15000
+SCRIPT_DIR = Path(__file__).resolve().parent  # O(1)
+CONFIG_DIR = SCRIPT_DIR.parent / "config"  # O(1)
+REVIEW_COMMANDS = ("adapter", "packet", "contract")  # O(1)
+IMPLEMENTER_PREFIX = 18000  # O(1)
+CTX_CEILING = 80000  # O(1)
+MERGE_MIN_VARIABLE = 18000  # O(1)
+MERGE_MIN_MINUTES = 1.0  # O(1)
+DEFAULT_CAP = 10  # O(1)
+DEFAULT_MAX_TASK_MIN = 3.0  # O(1)
+DEFAULT_MAX_CHARS = 15000  # O(1)
 
-TASK_ID = r"T\d+[a-z]*"
-TASK_ID_RE = re.compile(rf"^{TASK_ID}$")
-HEADING_RE = re.compile(rf"^#{{3,4}}\s+({TASK_ID})\b(.*)$")
-ANY_HEADING_RE = re.compile(r"^#{1,4}\s")
-FIELD_RE = re.compile(r"^\*\*([^*:]+?)(?:\s*\([^)]*\))?:\*\*\s*(.*)$")
-FENCE_RE = re.compile(r"^\s{0,3}(`{3,}|~{3,})(.*)$")
-
-
-class PlanError(Exception):
-    def __init__(self, message: str, code: int = 2):
-        super().__init__(message)
-        self.code = code
+TASK_ID = r"T\d+[a-z]*"  # O(1)
+TASK_ID_RE = re.compile(rf"^{TASK_ID}$")  # O(1)
+HEADING_RE = re.compile(rf"^#{{3,4}}\s+({TASK_ID})\b(.*)$")  # O(1)
+ANY_HEADING_RE = re.compile(r"^#{1,4}\s")  # O(1)
+FIELD_RE = re.compile(r"^\*\*([^*:]+?)(?:\s*\([^)]*\))?:\*\*\s*(.*)$")  # O(1)
+FENCE_RE = re.compile(r"^\s{0,3}(`{3,}|~{3,})(.*)$")  # O(1)
 
 
-def nkey(tid: str):
-    m = re.match(r"T(\d+)([a-z]*)$", tid)
-    return (int(m.group(1)), m.group(2)) if m else (10**9, tid)
+class PlanError(Exception):  # O(1)
+    def __init__(self, message: str, code: int = 2):  # O(1)
+        super().__init__(message)  # O(1)
+        self.code = code  # O(1)
+
+
+def nkey(tid: str):  # O(1)
+    m = re.match(r"T(\d+)([a-z]*)$", tid)  # O(1)
+    return (int(m.group(1)), m.group(2)) if m else (10**9, tid)  # O(1)
 
 
 # --------------------------------------------------------------------------
 # Plan parsing
 # --------------------------------------------------------------------------
 
-@dataclass
-class FenceBlock:
-    start: int  # index of opening fence line
-    end: int  # index of closing fence line (or last line if unterminated)
-    info: str
-    content: list[str]
+@dataclass  # O(1)
+class FenceBlock:  # O(1)
+    start: int  # index of opening fence line | O(1)
+    end: int  # index of closing fence line (or last line if unterminated) | O(1)
+    info: str  # O(1)
+    content: list[str]  # O(1)
 
 
-def scan_fences(lines: list[str]):
-    """Return (fenced flags per line, top-level fence blocks)."""
-    flags: list[bool] = []
-    blocks: list[FenceBlock] = []
-    opened = None  # (char, length, info, start)
-    for i, ln in enumerate(lines):
-        m = FENCE_RE.match(ln)
-        if opened is None:
-            if m:
-                opened = (m.group(1)[0], len(m.group(1)), m.group(2).strip(), i)
-                flags.append(True)
-            else:
-                flags.append(False)
-        else:
-            flags.append(True)
-            if m and m.group(1)[0] == opened[0] and len(m.group(1)) >= opened[1] and not m.group(2).strip():
-                blocks.append(FenceBlock(opened[3], i, opened[2], lines[opened[3] + 1:i]))
-                opened = None
-    if opened is not None:
-        blocks.append(FenceBlock(opened[3], len(lines) - 1, opened[2], lines[opened[3] + 1:]))
-    return flags, blocks
+def scan_fences(lines: list[str]):  # O(L+C) total
+    """Return (fenced flags per line, top-level fence blocks)."""  # O(1)
+    flags: list[bool] = []  # O(1)
+    blocks: list[FenceBlock] = []  # O(1)
+    opened = None  # (char, length, info, start) | O(1)
+    for i, ln in enumerate(lines):  # O(L) iterations
+        m = FENCE_RE.match(ln)  # O(len line)
+        if opened is None:  # O(1)
+            if m:  # O(1)
+                opened = (m.group(1)[0], len(m.group(1)), m.group(2).strip(), i)  # O(len line)
+                flags.append(True)  # O(1) amortized
+            else:  # O(1)
+                flags.append(False)  # O(1)
+        else:  # O(1)
+            flags.append(True)  # O(1)
+            if m and m.group(1)[0] == opened[0] and len(m.group(1)) >= opened[1] and not m.group(2).strip():  # O(len line)
+                blocks.append(FenceBlock(opened[3], i, opened[2], lines[opened[3] + 1:i]))  # O(block len) slice copy; O(L) over all blocks
+                opened = None  # O(1)
+    if opened is not None:  # O(1)
+        blocks.append(FenceBlock(opened[3], len(lines) - 1, opened[2], lines[opened[3] + 1:]))  # O(L) slice copy
+    return flags, blocks  # O(1)
 
 
-def expand_braces(s: str) -> list[str]:
-    m = re.search(r"\{([^{}]*)\}", s)
-    if not m:
-        return [s]
-    out: list[str] = []
-    for alt in m.group(1).split(","):
-        out.extend(expand_braces(s[:m.start()] + alt.strip() + s[m.end():]))
-    return out
+def expand_braces(s: str) -> list[str]:  # O(s*A) total, A = expansions
+    m = re.search(r"\{([^{}]*)\}", s)  # O(s) regex scan
+    if not m:  # O(1)
+        return [s]  # O(1)
+    out: list[str] = []  # O(1)
+    for alt in m.group(1).split(","):  # O(alts) iterations
+        out.extend(expand_braces(s[:m.start()] + alt.strip() + s[m.end():]))  # O(s) per alt + recursion
+    return out  # O(A)
 
 
-def split_top_level(s: str, sep: str = ",") -> list[str]:
-    parts, depth, cur = [], 0, ""
-    for ch in s:
-        if ch in "{([":
-            depth += 1
-        elif ch in "})]":
-            depth -= 1
-        if ch == sep and depth == 0:
-            parts.append(cur)
-            cur = ""
-        else:
-            cur += ch
-    parts.append(cur)
-    return [p.strip() for p in parts if p.strip()]
+def split_top_level(s: str, sep: str = ",") -> list[str]:  # O(s) total (CPython in-place concat)
+    parts, depth, cur = [], 0, ""  # O(1)
+    for ch in s:  # O(s) iterations
+        if ch in "{([":  # O(1)
+            depth += 1  # O(1)
+        elif ch in "})]":  # O(1)
+            depth -= 1  # O(1)
+        if ch == sep and depth == 0:  # O(1)
+            parts.append(cur)  # O(1)
+            cur = ""  # O(1)
+        else:  # O(1)
+            cur += ch  # O(1) amortized
+    parts.append(cur)  # O(1)
+    return [p.strip() for p in parts if p.strip()]  # O(s)
 
 
-def strip_ticks(s: str) -> str:
-    return s.strip().strip("`").strip()
+def strip_ticks(s: str) -> str:  # O(s)
+    return s.strip().strip("`").strip()  # O(s)
 
 
-@dataclass
-class Task:
-    id: str
-    title: str = ""
-    heading: str = ""
-    line: int = 0
-    fields: dict[str, list[str]] = field(default_factory=dict)
-    text: str = ""  # whole section text
-    synthetic: bool = False
+@dataclass  # O(1)
+class Task:  # O(1)
+    id: str  # O(1)
+    title: str = ""  # O(1)
+    heading: str = ""  # O(1)
+    line: int = 0  # O(1)
+    fields: dict[str, list[str]] = field(default_factory=dict)  # O(1)
+    text: str = ""  # whole section text | O(1)
+    synthetic: bool = False  # O(1)
 
-    def field_text(self, name: str) -> str:
-        return " ".join(x for x in self.fields.get(name, []) if x).strip()
+    def field_text(self, name: str) -> str:  # O(k*s)
+        return " ".join(x for x in self.fields.get(name, []) if x).strip()  # O(k*s)
 
-    @property
-    def owns(self) -> list[str]:
-        out: list[str] = []
-        for raw in self.fields.get("owns", []):
-            for part in split_top_level(raw):
-                part = strip_ticks(part.lstrip("-* ").strip())
-                if part:
-                    out.extend(expand_braces(part))
-        return out
+    @property  # O(1)
+    def owns(self) -> list[str]:  # O(k*s*A)
+        out: list[str] = []  # O(1)
+        for raw in self.fields.get("owns", []):  # O(k) iterations
+            for part in split_top_level(raw):  # O(parts) iterations; split O(s)
+                part = strip_ticks(part.lstrip("-* ").strip())  # O(s)
+                if part:  # O(1)
+                    out.extend(expand_braces(part))  # O(s*A)
+        return out  # O(1)
 
-    @property
-    def owned_sources(self) -> list[str]:
-        res = []
-        for p in self.owns:
-            q = p.replace("\\", "/")
-            name = q.rsplit("/", 1)[-1]
-            if q.endswith(".py") and not q.startswith("tests/") and "/tests/" not in q and not name.startswith("test_"):
-                res.append(q)
-        return res
+    @property  # O(1)
+    def owned_sources(self) -> list[str]:  # O(k*s*A + o*s) total
+        res = []  # O(1)
+        for p in self.owns:  # O(o) iterations (+ owns O(k*s*A))
+            q = p.replace("\\", "/")  # O(s)
+            name = q.rsplit("/", 1)[-1]  # O(s)
+            if q.endswith(".py") and not q.startswith("tests/") and "/tests/" not in q and not name.startswith("test_"):  # O(s)
+                res.append(q)  # O(1)
+        return res  # O(1)
 
-    def _items(self, name: str) -> list[str]:
-        items: list[str] = []
-        for raw in self.fields.get(name, []):
-            raw = raw.strip()
-            if not raw:
-                continue
-            for part in re.split(r"\s+·\s+", raw):
-                part = strip_ticks(part.lstrip("-* ").strip())
-                if part:
-                    items.append(part)
-        return items
+    def _items(self, name: str) -> list[str]:  # O(k*s)
+        items: list[str] = []  # O(1)
+        for raw in self.fields.get(name, []):  # O(k) iterations
+            raw = raw.strip()  # O(s)
+            if not raw:  # O(1)
+                continue  # O(1)
+            for part in re.split(r"\s+·\s+", raw):  # O(parts) iterations; split O(s)
+                part = strip_ticks(part.lstrip("-* ").strip())  # O(s)
+                if part:  # O(1)
+                    items.append(part)  # O(1)
+        return items  # O(1)
 
-    @property
-    def produces(self) -> list[str]:
-        return self._items("produces")
+    @property  # O(1)
+    def produces(self) -> list[str]:  # O(k*s)
+        return self._items("produces")  # O(k*s)
 
-    @property
-    def consumes(self) -> list[str]:
-        return self._items("consumes")
+    @property  # O(1)
+    def consumes(self) -> list[str]:  # O(k*s)
+        return self._items("consumes")  # O(k*s)
 
-    @property
-    def contract_text(self) -> str:
-        return self.field_text("contract") or self.field_text("notes")
+    @property  # O(1)
+    def contract_text(self) -> str:  # O(k*s)
+        return self.field_text("contract") or self.field_text("notes")  # O(k*s)
 
-    @property
-    def stated_time(self) -> float | None:
-        m = re.search(r"Est\.\s*time[:\s]+~?\s*(\d+(?:\.\d+)?)\s*min", self.heading)
-        if m:
-            return float(m.group(1))
-        m = re.match(r"~?\s*(\d+(?:\.\d+)?)\s*min", self.field_text("est. time"))
-        return float(m.group(1)) if m else None
+    @property  # O(1)
+    def stated_time(self) -> float | None:  # O(k*s)
+        m = re.search(r"Est\.\s*time[:\s]+~?\s*(\d+(?:\.\d+)?)\s*min", self.heading)  # O(s)
+        if m:  # O(1)
+            return float(m.group(1))  # O(1)
+        m = re.match(r"~?\s*(\d+(?:\.\d+)?)\s*min", self.field_text("est. time"))  # O(k*s)
+        return float(m.group(1)) if m else None  # O(1)
 
-    @property
-    def stated_context(self) -> int | None:
-        m = re.search(r"Est\.\s*context[:\s]+~?\s*(\d+(?:\.\d+)?)\s*k", self.heading)
-        if not m:
-            m = re.match(r"~?\s*(\d+(?:\.\d+)?)\s*k", self.field_text("est. context"))
-        return int(round(float(m.group(1)) * 1000)) if m else None
+    @property  # O(1)
+    def stated_context(self) -> int | None:  # O(k*s)
+        m = re.search(r"Est\.\s*context[:\s]+~?\s*(\d+(?:\.\d+)?)\s*k", self.heading)  # O(s)
+        if not m:  # O(1)
+            m = re.match(r"~?\s*(\d+(?:\.\d+)?)\s*k", self.field_text("est. context"))  # O(k*s)
+        return int(round(float(m.group(1)) * 1000)) if m else None  # O(1)
 
-    @property
-    def complexity(self) -> int | None:
-        m = re.search(r"Complexity\s+(\d+)", self.heading)
-        return int(m.group(1)) if m else None
+    @property  # O(1)
+    def complexity(self) -> int | None:  # O(s)
+        m = re.search(r"Complexity\s+(\d+)", self.heading)  # O(s)
+        return int(m.group(1)) if m else None  # O(1)
 
-    @property
-    def features(self) -> dict:
-        """Measurable features incl. the legacy Est. time parenthetical as a fallback."""
-        return self._features(True)
+    @property  # O(1)
+    def features(self) -> dict:  # O(k*s)
+        """Measurable features incl. the legacy Est. time parenthetical as a fallback."""  # O(1)
+        return self._features(True)  # O(k*s)
 
-    @property
-    def explicit_features(self) -> dict:
-        """Only what the plan states as fields: **Features:** or **Components/LOC owned/Tests/Model:**."""
-        return self._features(False)
+    @property  # O(1)
+    def explicit_features(self) -> dict:  # O(k*s)
+        """Only what the plan states as fields: **Features:** or **Components/LOC owned/Tests/Model:**."""  # O(1)
+        return self._features(False)  # O(k*s)
 
-    @property
-    def has_features(self) -> bool:
-        """True when the coordinator wrote features; then the predictor's value wins over Est. time."""
-        return bool(set(self.explicit_features) & {"components", "loc", "tests"})
+    @property  # O(1)
+    def has_features(self) -> bool:  # O(k*s)
+        """True when the coordinator wrote features; then the predictor's value wins over Est. time."""  # O(1)
+        return bool(set(self.explicit_features) & {"components", "loc", "tests"})  # O(k*s)
 
-    def _features(self, parenthetical: bool) -> dict:
-        f: dict = {}
+    def _features(self, parenthetical: bool) -> dict:  # O(k*s) total
+        f: dict = {}  # O(1)
 
-        def take(text: str):
-            for key, pat in (
-                ("components", r"components?\s*[=:]?\s*(\d+)|(\d+)\s+components?"),
-                ("loc", r"\bloc(?:\s+owned)?\s*[=:]?\s*~?(\d+)|(?:about\s+|~)?(\d+)\s*loc\b"),
-                ("docs_chars", r"docs?(?:\s+chars)?\s*[=:]\s*(\d+)"),
-                ("reads_loc", r"reads?(?:\s+loc)?\s*[=:]\s*(\d+)"),
-            ):
-                if key in f:
-                    continue
-                m = re.search(pat, text, re.I)
-                if m:
-                    f[key] = int(next(g for g in m.groups() if g))
-            if "tests" not in f:
-                m = re.search(r"tests?\s*[=:]\s*(fast|slow)|\b(fast|slow)\s+tests?\b", text, re.I)
-                if m:
-                    f["tests"] = (m.group(1) or m.group(2)).lower()
-            if "model" not in f:
-                m = re.search(r"model\s*[=:]\s*([A-Za-z][\w.\-]*)", text, re.I)
-                if m:
-                    f["model"] = m.group(1).lower()
+        def take(text: str):  # O(s) per call
+            for key, pat in (  # O(1) iterations (4 patterns)
+                ("components", r"components?\s*[=:]?\s*(\d+)|(\d+)\s+components?"),  # O(1)
+                ("loc", r"\bloc(?:\s+owned)?\s*[=:]?\s*~?(\d+)|(?:about\s+|~)?(\d+)\s*loc\b"),  # O(1)
+                ("docs_chars", r"docs?(?:\s+chars)?\s*[=:]\s*(\d+)"),  # O(1)
+                ("reads_loc", r"reads?(?:\s+loc)?\s*[=:]\s*(\d+)"),  # O(1)
+            ):  # O(1)
+                if key in f:  # O(1)
+                    continue  # O(1)
+                m = re.search(pat, text, re.I)  # O(s)
+                if m:  # O(1)
+                    f[key] = int(next(g for g in m.groups() if g))  # O(1)
+            if "tests" not in f:  # O(1)
+                m = re.search(r"tests?\s*[=:]\s*(fast|slow)|\b(fast|slow)\s+tests?\b", text, re.I)  # O(s)
+                if m:  # O(1)
+                    f["tests"] = (m.group(1) or m.group(2)).lower()  # O(1)
+            if "model" not in f:  # O(1)
+                m = re.search(r"model\s*[=:]\s*([A-Za-z][\w.\-]*)", text, re.I)  # O(s)
+                if m:  # O(1)
+                    f["model"] = m.group(1).lower()  # O(1)
 
-        take(self.field_text("features"))
-        for name, key in (("components", "components"), ("loc owned", "loc"), ("loc", "loc"),
-                          ("model", "model"), ("tests", "tests"), ("test speed", "tests")):
-            val = self.field_text(name)
-            if val and key not in f:
-                take(f"{key}={val}")
-        if parenthetical and ("loc" not in f or "components" not in f or "tests" not in f):
-            m = re.search(r"\(([^)]*)\)", self.field_text("est. time"))
-            if m:
-                take(m.group(1))
-        return f
+        take(self.field_text("features"))  # O(k*s)
+        for name, key in (("components", "components"), ("loc owned", "loc"), ("loc", "loc"),  # O(1) iterations (6 pairs)
+                          ("model", "model"), ("tests", "tests"), ("test speed", "tests")):  # O(1)
+            val = self.field_text(name)  # O(k*s)
+            if val and key not in f:  # O(1)
+                take(f"{key}={val}")  # O(k*s)
+        if parenthetical and ("loc" not in f or "components" not in f or "tests" not in f):  # O(1)
+            m = re.search(r"\(([^)]*)\)", self.field_text("est. time"))  # O(k*s)
+            if m:  # O(1)
+                take(m.group(1))  # O(s)
+        return f  # O(1)
 
 
-class Plan:
-    def __init__(self, text: str, path: Path | None = None):
-        self.path = path
-        self.eol = "\r\n" if "\r\n" in text else "\n"
-        self.text = text.replace("\r\n", "\n")
-        self.lines = self.text.split("\n")
-        self.fenced, self.blocks = scan_fences(self.lines)
-        self.tasks: list[Task] = self._parse_tasks()
-        self.by_id = {t.id: t for t in self.tasks}
+class Plan:  # O(1)
+    def __init__(self, text: str, path: Path | None = None):  # O(C+L) total
+        self.path = path  # O(1)
+        self.eol = "\r\n" if "\r\n" in text else "\n"  # O(C)
+        self.text = text.replace("\r\n", "\n")  # O(C)
+        self.lines = self.text.split("\n")  # O(C)
+        self.fenced, self.blocks = scan_fences(self.lines)  # O(C+L)
+        self.tasks: list[Task] = self._parse_tasks()  # O(C+L)
+        self.by_id = {t.id: t for t in self.tasks}  # O(n)
 
-    @classmethod
-    def load(cls, path: str) -> "Plan":
-        p = Path(path)
-        if not p.is_file():
-            raise PlanError(f"plan not found: {path}")
-        return cls(p.read_bytes().decode("utf-8-sig"), p)
+    @classmethod  # O(1)
+    def load(cls, path: str) -> "Plan":  # O(C+L) total + file I/O
+        p = Path(path)  # O(1)
+        if not p.is_file():  # O(1) stat I/O
+            raise PlanError(f"plan not found: {path}")  # O(1)
+        return cls(p.read_bytes().decode("utf-8-sig"), p)  # O(C) file read + decode + parse
 
-    def _parse_tasks(self) -> list[Task]:
-        tasks: list[Task] = []
-        cur: Task | None = None
-        cur_field: str | None = None
-        body: list[str] = []
+    def _parse_tasks(self) -> list[Task]:  # O(C+L) total
+        tasks: list[Task] = []  # O(1)
+        cur: Task | None = None  # O(1)
+        cur_field: str | None = None  # O(1)
+        body: list[str] = []  # O(1)
 
-        def close():
-            if cur is not None:
-                cur.text = "\n".join(body)
+        def close():  # O(body chars)
+            if cur is not None:  # O(1)
+                cur.text = "\n".join(body)  # O(body chars); O(C) over all calls
 
-        for i, ln in enumerate(self.lines):
-            if not self.fenced[i]:
-                m = HEADING_RE.match(ln)
-                if m:
-                    close()
-                    title = m.group(2).strip().lstrip("·").strip()
-                    title = re.split(r"\s+·\s+|\s{2,}", title)[0].strip()
-                    cur = Task(id=m.group(1), title=title, heading=ln, line=i)
-                    tasks.append(cur)
-                    cur_field, body = None, [ln]
-                    continue
-                if ANY_HEADING_RE.match(ln):
-                    close()
-                    cur, cur_field, body = None, None, []
-                    continue
-            if cur is None:
-                continue
-            body.append(ln)
-            if self.fenced[i]:
-                continue
-            fm = FIELD_RE.match(ln.strip())
-            if fm:
-                cur_field = fm.group(1).strip().lower()
-                cur.fields.setdefault(cur_field, []).append(fm.group(2).strip())
-            elif cur_field and re.match(r"^\s*[-*]\s+", ln):
-                cur.fields[cur_field].append(ln.strip())
-            elif not ln.strip():
-                cur_field = None
-            elif cur_field and ln.startswith((" ", "\t")):
-                cur.fields[cur_field].append(ln.strip())
-            else:
-                cur_field = None
-        close()
-        return tasks
+        for i, ln in enumerate(self.lines):  # O(L) iterations
+            if not self.fenced[i]:  # O(1)
+                m = HEADING_RE.match(ln)  # O(s)
+                if m:  # O(1)
+                    close()  # O(body chars)
+                    title = m.group(2).strip().lstrip("·").strip()  # O(s)
+                    title = re.split(r"\s+·\s+|\s{2,}", title)[0].strip()  # O(s)
+                    cur = Task(id=m.group(1), title=title, heading=ln, line=i)  # O(1)
+                    tasks.append(cur)  # O(1)
+                    cur_field, body = None, [ln]  # O(1)
+                    continue  # O(1)
+                if ANY_HEADING_RE.match(ln):  # O(s)
+                    close()  # O(body chars)
+                    cur, cur_field, body = None, None, []  # O(1)
+                    continue  # O(1)
+            if cur is None:  # O(1)
+                continue  # O(1)
+            body.append(ln)  # O(1) amortized
+            if self.fenced[i]:  # O(1)
+                continue  # O(1)
+            fm = FIELD_RE.match(ln.strip())  # O(s)
+            if fm:  # O(1)
+                cur_field = fm.group(1).strip().lower()  # O(s)
+                cur.fields.setdefault(cur_field, []).append(fm.group(2).strip())  # O(s)
+            elif cur_field and re.match(r"^\s*[-*]\s+", ln):  # O(s)
+                cur.fields[cur_field].append(ln.strip())  # O(s)
+            elif not ln.strip():  # O(s)
+                cur_field = None  # O(1)
+            elif cur_field and ln.startswith((" ", "\t")):  # O(1)
+                cur.fields[cur_field].append(ln.strip())  # O(1)
+            else:  # O(1)
+                cur_field = None  # O(1)
+        close()  # O(body chars)
+        return tasks  # O(1)
 
-    def mermaid_blocks(self) -> list[FenceBlock]:
-        return [b for b in self.blocks if b.info.lower().startswith("mermaid")]
+    def mermaid_blocks(self) -> list[FenceBlock]:  # O(b)
+        return [b for b in self.blocks if b.info.lower().startswith("mermaid")]  # O(b)
 
-    def header_target(self) -> float | None:
-        m = re.search(r"^\*\*Target(?:[-\s]*(?:min|minutes|time))?:\*\*\s*~?\s*(\d+(?:\.\d+)?)", self.text, re.M)
-        return float(m.group(1)) if m else None
+    def header_target(self) -> float | None:  # O(C)
+        m = re.search(r"^\*\*Target(?:[-\s]*(?:min|minutes|time))?:\*\*\s*~?\s*(\d+(?:\.\d+)?)", self.text, re.M)  # O(C)
+        return float(m.group(1)) if m else None  # O(1)
 
-    def non_fenced_text(self) -> str:
-        return "\n".join(ln for ln, f in zip(self.lines, self.fenced) if not f)
+    def non_fenced_text(self) -> str:  # O(L)
+        return "\n".join(ln for ln, f in zip(self.lines, self.fenced) if not f)  # O(L)
 
-    def to_text(self) -> str:
-        return "\n".join(self.lines).replace("\n", self.eol) if self.eol != "\n" else "\n".join(self.lines)
+    def to_text(self) -> str:  # O(C)
+        return "\n".join(self.lines).replace("\n", self.eol) if self.eol != "\n" else "\n".join(self.lines)  # O(C)
 
 
 # --------------------------------------------------------------------------
 # Task graph
 # --------------------------------------------------------------------------
 
-def find_taskgraph_blocks(plan: Plan) -> list[tuple[FenceBlock, int]]:
-    found = []
-    for b in plan.mermaid_blocks():
-        for j, ln in enumerate(b.content):
-            if re.match(r"^\s*%%\s*taskgraph\b", ln):
-                found.append((b, j))
-                break
-    return found
+def find_taskgraph_blocks(plan: Plan) -> list[tuple[FenceBlock, int]]:  # O(L) total
+    found = []  # O(1)
+    for b in plan.mermaid_blocks():  # O(b) iterations
+        for j, ln in enumerate(b.content):  # O(block lines) iterations
+            if re.match(r"^\s*%%\s*taskgraph\b", ln):  # O(s)
+                found.append((b, j))  # O(1)
+                break  # O(1)
+    return found  # O(1)
 
 
-def _node_token(part: str) -> str:
-    cleaned = re.sub(r'\[[^\]]*\]|\([^)]*\)|\{[^}]*\}|"[^"]*"', "", part).strip()
-    m = re.match(r"[A-Za-z_][\w\-]*", cleaned)
-    return m.group(0) if m else cleaned
+def _node_token(part: str) -> str:  # O(s)
+    cleaned = re.sub(r'\[[^\]]*\]|\([^)]*\)|\{[^}]*\}|"[^"]*"', "", part).strip()  # O(s)
+    m = re.match(r"[A-Za-z_][\w\-]*", cleaned)  # O(s)
+    return m.group(0) if m else cleaned  # O(1)
 
 
-def parse_taskgraph(plan: Plan) -> dict[str, list[str]]:
-    blocks = find_taskgraph_blocks(plan)
-    if not blocks:
-        raise PlanError("no '%% taskgraph' block found in plan")
-    deps: dict[str, set[str]] = {}
-    mentioned: list[str] = []
-    skip = ("flowchart", "graph", "subgraph", "end", "direction", "classdef", "style", "class", "click", "linkstyle")
-    for block, j in blocks:
-        for raw in block.content[j + 1:]:
-            ln = raw.strip()
-            if not ln or ln.startswith("%%"):
-                continue
-            if ln.split()[0].lower() in skip:
-                continue
-            parts = re.split(r"\s*-->\s*(?:\|[^|]*\|\s*)?", ln)
-            groups: list[list[str]] = []
-            for part in parts:
-                ids = [_node_token(p) for p in part.split("&") if p.strip()]
-                groups.append(ids)
-            for ids in groups:
-                for tid in ids:
-                    if not TASK_ID_RE.match(tid):
-                        raise PlanError(f"unknown task id {tid!r} in taskgraph")
-                    deps.setdefault(tid, set())
-                    if tid not in mentioned:
-                        mentioned.append(tid)
-            for left, right in zip(groups, groups[1:]):
-                for b_ in right:
-                    for a_ in left:
-                        deps[b_].add(a_)
-    known = set(plan.by_id)
-    if known:
-        for tid in mentioned:
-            if tid not in known:
-                raise PlanError(f"unknown task id {tid!r} in taskgraph (no such task in plan)")
-    order = [t.id for t in plan.tasks] + [t for t in mentioned if t not in known]
-    graph: dict[str, list[str]] = {}
-    for tid in order:
-        graph[tid] = sorted(deps.get(tid, set()), key=nkey)
-    cycle = find_cycle(graph)
-    if cycle:
-        raise PlanError("cycle in taskgraph: " + " → ".join(cycle))
-    return graph
+def parse_taskgraph(plan: Plan) -> dict[str, list[str]]:  # O(L*s + R*M + e log n) total
+    blocks = find_taskgraph_blocks(plan)  # O(L) scan
+    if not blocks:  # O(1)
+        raise PlanError("no '%% taskgraph' block found in plan")  # O(1)
+    deps: dict[str, set[str]] = {}  # O(1)
+    mentioned: list[str] = []  # O(1)
+    skip = ("flowchart", "graph", "subgraph", "end", "direction", "classdef", "style", "class", "click", "linkstyle")  # O(1)
+    for block, j in blocks:  # O(blocks) iterations
+        for raw in block.content[j + 1:]:  # O(G) iterations
+            ln = raw.strip()  # O(s)
+            if not ln or ln.startswith("%%"):  # O(1)
+                continue  # O(1)
+            if ln.split()[0].lower() in skip:  # O(s)
+                continue  # O(1)
+            parts = re.split(r"\s*-->\s*(?:\|[^|]*\|\s*)?", ln)  # O(s)
+            groups: list[list[str]] = []  # O(1)
+            for part in parts:  # O(parts) iterations
+                ids = [_node_token(p) for p in part.split("&") if p.strip()]  # O(s)
+                groups.append(ids)  # O(1)
+            for ids in groups:  # O(parts) iterations
+                for tid in ids:  # O(ids) iterations
+                    if not TASK_ID_RE.match(tid):  # O(s)
+                        raise PlanError(f"unknown task id {tid!r} in taskgraph")  # O(1)
+                    deps.setdefault(tid, set())  # O(1)
+                    if tid not in mentioned:  # O(M) x in list scan; hotspot
+                        mentioned.append(tid)  # O(1)
+            for left, right in zip(groups, groups[1:]):  # O(parts) iterations
+                for b_ in right:  # O(right) iterations
+                    for a_ in left:  # O(left) iterations; O(1) per edge
+                        deps[b_].add(a_)  # O(1)
+    known = set(plan.by_id)  # O(n)
+    if known:  # O(1)
+        for tid in mentioned:  # O(M) iterations
+            if tid not in known:  # O(1)
+                raise PlanError(f"unknown task id {tid!r} in taskgraph (no such task in plan)")  # O(1)
+    order = [t.id for t in plan.tasks] + [t for t in mentioned if t not in known]  # O(n+M)
+    graph: dict[str, list[str]] = {}  # O(1)
+    for tid in order:  # O(n) iterations
+        graph[tid] = sorted(deps.get(tid, set()), key=nkey)  # O(d log d)
+    cycle = find_cycle(graph)  # O(n+e)
+    if cycle:  # O(1)
+        raise PlanError("cycle in taskgraph: " + " → ".join(cycle))  # O(n)
+    return graph  # O(1)
 
 
-def find_cycle(graph: dict[str, list[str]]) -> list[str] | None:
-    state: dict[str, int] = {}
-    stack: list[str] = []
+def find_cycle(graph: dict[str, list[str]]) -> list[str] | None:  # O(n+e) total
+    state: dict[str, int] = {}  # O(1)
+    stack: list[str] = []  # O(1)
 
-    def visit(n: str):
-        state[n] = 1
-        stack.append(n)
-        for d in graph.get(n, []):
-            if state.get(d, 0) == 1:
-                return stack[stack.index(d):] + [d]
-            if state.get(d, 0) == 0:
-                r = visit(d)
-                if r:
-                    return r
-        stack.pop()
-        state[n] = 2
-        return None
+    def visit(n: str):  # O(deg) + recursion
+        state[n] = 1  # O(1)
+        stack.append(n)  # O(1)
+        for d in graph.get(n, []):  # O(deg) iterations
+            if state.get(d, 0) == 1:  # O(1)
+                return stack[stack.index(d):] + [d]  # O(n) once, only on cycle found
+            if state.get(d, 0) == 0:  # O(1)
+                r = visit(d)  # O(1)
+                if r:  # O(1)
+                    return r  # O(1)
+        stack.pop()  # O(1)
+        state[n] = 2  # O(1)
+        return None  # O(1)
 
-    for n in graph:
-        if state.get(n, 0) == 0:
-            r = visit(n)
-            if r:
-                return list(reversed(r))
-    return None
-
-
-def ancestors(graph: dict[str, list[str]]) -> dict[str, set[str]]:
-    memo: dict[str, set[str]] = {}
-
-    def anc(n: str) -> set[str]:
-        if n in memo:
-            return memo[n]
-        memo[n] = set()
-        s: set[str] = set()
-        for d in graph.get(n, []):
-            s.add(d)
-            s |= anc(d)
-        memo[n] = s
-        return s
-
-    for n in graph:
-        anc(n)
-    return memo
+    for n in graph:  # O(n) iterations
+        if state.get(n, 0) == 0:  # O(1)
+            r = visit(n)  # O(1)
+            if r:  # O(1)
+                return list(reversed(r))  # O(n) once
+    return None  # O(1)
 
 
-def seams_of(graph: dict[str, list[str]]) -> list[str]:
-    out = []
-    for t in graph:
-        for d in graph[t]:
-            out.append(f"{d}↔{t}")
-    return out
+def ancestors(graph: dict[str, list[str]]) -> dict[str, set[str]]:  # O(e*n) time, O(n^2) space
+    memo: dict[str, set[str]] = {}  # O(1)
+
+    def anc(n: str) -> set[str]:  # O(deg*n) per call
+        if n in memo:  # O(1)
+            return memo[n]  # O(1)
+        memo[n] = set()  # O(1)
+        s: set[str] = set()  # O(1)
+        for d in graph.get(n, []):  # O(deg) iterations
+            s.add(d)  # O(1)
+            s |= anc(d)  # O(n) set union
+        memo[n] = s  # O(1)
+        return s  # O(1)
+
+    for n in graph:  # O(n) iterations
+        anc(n)  # O(1)
+    return memo  # O(1)
+
+
+def seams_of(graph: dict[str, list[str]]) -> list[str]:  # O(n+e)
+    out = []  # O(1)
+    for t in graph:  # O(n) iterations
+        for d in graph[t]:  # O(deg) iterations
+            out.append(f"{d}↔{t}")  # O(1) per edge
+    return out  # O(n+e)
 
 
 # --------------------------------------------------------------------------
 # Predictor glue and scheduling
 # --------------------------------------------------------------------------
 
-def _predict():
-    if str(SCRIPT_DIR) not in sys.path:
-        sys.path.insert(0, str(SCRIPT_DIR))
-    import predict  # noqa: WPS433 (lazy: predict imports this module)
-    return predict
+def _predict():  # O(1)
+    if str(SCRIPT_DIR) not in sys.path:  # O(1)
+        sys.path.insert(0, str(SCRIPT_DIR))  # O(1)
+    import predict  # noqa: WPS433 (lazy: predict imports this module) | O(1) import (cached after first)
+    return predict  # O(1)
 
 
-def effective_times(plan: Plan, graph: dict[str, list[str]], args) -> tuple[dict[str, float], dict[str, str]]:
+def effective_times(plan: Plan, graph: dict[str, list[str]], args) -> tuple[dict[str, float], dict[str, str]]:  # O(n*p) total + config I/O
     """Per-task minutes. Features present: the predictor's value wins. A stated `Est. time` is used only
     for a task with no features, or for every task with --stated."""
-    predict = _predict()
-    models = predict.load_models(getattr(args, "models", None))
-    coef = predict.load_coef(getattr(args, "coef", None))
-    force_stated = bool(getattr(args, "stated", False))
-    times: dict[str, float] = {}
-    source: dict[str, str] = {}
-    for tid in graph:
-        task = plan.by_id.get(tid) or Task(id=tid, synthetic=True)
-        stated = task.stated_time if (force_stated or not task.has_features) else None
-        if stated is not None:
-            times[tid], source[tid] = float(stated), "stated"
-        else:
-            p = predict.predict_task(task, models, coef)
-            times[tid], source[tid] = p["est_time_min"], p["source"]
-    return times, source
+    predict = _predict()  # O(1)
+    models = predict.load_models(getattr(args, "models", None))  # O(config size) file I/O
+    coef = predict.load_coef(getattr(args, "coef", None))  # O(config size) file I/O
+    force_stated = bool(getattr(args, "stated", False))  # O(1)
+    times: dict[str, float] = {}  # O(1)
+    source: dict[str, str] = {}  # O(1)
+    for tid in graph:  # O(n) iterations
+        task = plan.by_id.get(tid) or Task(id=tid, synthetic=True)  # O(1)
+        stated = task.stated_time if (force_stated or not task.has_features) else None  # O(k*s)
+        if stated is not None:  # O(1)
+            times[tid], source[tid] = float(stated), "stated"  # O(1)
+        else:  # O(1)
+            p = predict.predict_task(task, models, coef)  # O(p)
+            times[tid], source[tid] = p["est_time_min"], p["source"]  # O(1)
+    return times, source  # O(1)
 
 
-def effective_context(task: Task, models: dict, coef: dict, force_stated: bool = False) -> tuple[int | None, str]:
+def effective_context(task: Task, models: dict, coef: dict, force_stated: bool = False) -> tuple[int | None, str]:  # O(k*s + p)
     """Per-task context tokens. Features present: the predictor's value wins, as for Est. time. A stated
     `Est. context` is used only for a task with no features, or with --stated. (None, "none") if neither."""
-    predict = _predict()
-    stated = task.stated_context
-    if stated is not None and (force_stated or not task.has_features):
-        return stated, "stated"
-    if task.has_features:
-        return predict.predict_task(task, models, coef)["est_context"], "predicted"
-    return None, "none"
+    predict = _predict()  # O(1)
+    stated = task.stated_context  # O(k*s)
+    if stated is not None and (force_stated or not task.has_features):  # O(k*s)
+        return stated, "stated"  # O(1)
+    if task.has_features:  # O(k*s)
+        return predict.predict_task(task, models, coef)["est_context"], "predicted"  # O(p)
+    return None, "none"  # O(1)
 
 
-def simulate(times: dict[str, float], graph: dict[str, list[str]], cap: int) -> dict:
-    order = {t: i for i, t in enumerate(sorted(graph, key=nkey))}
-    done: dict[str, float] = {}
-    start: dict[str, float] = {}
-    lane: dict[str, int] = {}
-    running: list[tuple[float, int, str, int]] = []
-    free = list(range(1, max(1, cap) + 1))
-    remaining = set(graph)
-    now = 0.0
-    while remaining or running:
-        ready = [t for t in remaining if all(d in done for d in graph[t])]
-        ready.sort(key=lambda t: (-times[t], order[t]))
-        while ready and free:
-            t = ready.pop(0)
-            ln = min(free)
-            free.remove(ln)
-            start[t], lane[t] = now, ln
-            running.append((now + times[t], order[t], t, ln))
-            remaining.discard(t)
-        if not running:
-            break
-        running.sort()
-        now = running[0][0]
-        while running and running[0][0] <= now + 1e-12:
-            end, _, t, ln = running.pop(0)
-            done[t] = end
-            free.append(ln)
-    events = []
-    for t in start:
-        if times[t] > 0:
-            events.append((start[t], 1))
-            events.append((done[t], -1))
-    events.sort(key=lambda e: (e[0], e[1]))
-    width = peak = 0
-    for _, d in events:
-        width += d
-        peak = max(peak, width)
+def simulate(times: dict[str, float], graph: dict[str, list[str]], cap: int) -> dict:  # O(n*(n+e) + n*c) total
+    order = {t: i for i, t in enumerate(sorted(graph, key=nkey))}  # O(n log n)
+    done: dict[str, float] = {}  # O(1)
+    start: dict[str, float] = {}  # O(1)
+    lane: dict[str, int] = {}  # O(1)
+    running: list[tuple[float, int, str, int]] = []  # O(1)
+    free = list(range(1, max(1, cap) + 1))  # O(c)
+    remaining = set(graph)  # O(n)
+    now = 0.0  # O(1)
+    while remaining or running:  # O(n) iterations
+        ready = [t for t in remaining if all(d in done for d in graph[t])]  # O(n+e) per iteration
+        ready.sort(key=lambda t: (-times[t], order[t]))  # O(r log r)
+        while ready and free:  # O(started) iterations
+            t = ready.pop(0)  # O(r) list.pop(0)
+            ln = min(free)  # O(c) min
+            free.remove(ln)  # O(c) list.remove
+            start[t], lane[t] = now, ln  # O(1)
+            running.append((now + times[t], order[t], t, ln))  # O(1)
+            remaining.discard(t)  # O(1)
+        if not running:  # O(1)
+            break  # O(1)
+        running.sort()  # O(c log c)
+        now = running[0][0]  # O(1)
+        while running and running[0][0] <= now + 1e-12:  # O(finished) iterations
+            end, _, t, ln = running.pop(0)  # O(c) list.pop(0)
+            done[t] = end  # O(1)
+            free.append(ln)  # O(1)
+    events = []  # O(1)
+    for t in start:  # O(n) iterations
+        if times[t] > 0:  # O(1)
+            events.append((start[t], 1))  # O(1)
+            events.append((done[t], -1))  # O(1)
+    events.sort(key=lambda e: (e[0], e[1]))  # O(n log n)
+    width = peak = 0  # O(1)
+    for _, d in events:  # O(n) iterations
+        width += d  # O(1)
+        peak = max(peak, width)  # O(1)
     # critical path on the dependency graph (unlimited lanes)
-    ef: dict[str, float] = {}
-    pred: dict[str, str | None] = {}
-    anc_all = ancestors(graph)
-    for t in sorted(graph, key=lambda x: (len(anc_all[x]), nkey(x))):
-        best, bp = 0.0, None
-        for d in sorted(graph[t], key=nkey):
-            if ef[d] > best + 1e-12:
-                best, bp = ef[d], d
-        ef[t] = best + times[t]
-        pred[t] = bp
-    if ef:
-        endt = max(sorted(ef, key=nkey), key=lambda x: ef[x])
-        path = [endt]
-        while pred[path[-1]]:
-            path.append(pred[path[-1]])
-        path.reverse()
-        cp_len = ef[endt]
-    else:
-        path, cp_len = [], 0.0
-    return {
-        "start": start, "end": done, "lane": lane,
-        "build_min": max(done.values()) if done else 0.0,
-        "peak_width": peak,
-        "critical_path": path,
-        "critical_path_min": cp_len,
-    }
+    ef: dict[str, float] = {}  # O(1)
+    pred: dict[str, str | None] = {}  # O(1)
+    anc_all = ancestors(graph)  # O(e*n) ancestors only to order by depth
+    for t in sorted(graph, key=lambda x: (len(anc_all[x]), nkey(x))):  # O(n) iterations; sort O(n log n)
+        best, bp = 0.0, None  # O(1)
+        for d in sorted(graph[t], key=nkey):  # O(d) iterations; sorted O(d log d)
+            if ef[d] > best + 1e-12:  # O(1)
+                best, bp = ef[d], d  # O(1)
+        ef[t] = best + times[t]  # O(1)
+        pred[t] = bp  # O(1)
+    if ef:  # O(1)
+        endt = max(sorted(ef, key=nkey), key=lambda x: ef[x])  # O(n log n) sort + max
+        path = [endt]  # O(1)
+        while pred[path[-1]]:  # O(path) iterations
+            path.append(pred[path[-1]])  # O(1)
+        path.reverse()  # O(path)
+        cp_len = ef[endt]  # O(1)
+    else:  # O(1)
+        path, cp_len = [], 0.0  # O(1)
+    return {  # O(1)
+        "start": start, "end": done, "lane": lane,  # O(1)
+        "build_min": max(done.values()) if done else 0.0,  # O(n)
+        "peak_width": peak,  # O(1)
+        "critical_path": path,  # O(1)
+        "critical_path_min": cp_len,  # O(1)
+    }  # O(1)
 
 
-def schedule_report(plan: Plan, args) -> dict:
-    graph = parse_taskgraph(plan)
-    times, source = effective_times(plan, graph, args)
-    cap = args.cap
-    sim = simulate(times, graph, cap)
-    predict = _predict()
-    coef = predict.load_coef(getattr(args, "coef", None))
-    tail = args.tail_min if getattr(args, "tail_min", None) is not None else float(coef.get("schedule", {}).get("tail_min", 3.5))
-    target = args.target_min if getattr(args, "target_min", None) is not None else plan.header_target()
-    total = sim["build_min"] + tail
-    sim.update({
-        "graph": graph, "times": times, "source": source, "tail_min": tail,
-        "total_min": total, "target_min": target,
-        "target_met": None if target is None else total <= target + 1e-9,
-        "cap": cap,
-    })
-    return sim
+def schedule_report(plan: Plan, args) -> dict:  # O(n*(n+e) + n*p) total
+    graph = parse_taskgraph(plan)  # O(L*s + R*M + e log n)
+    times, source = effective_times(plan, graph, args)  # O(n*p)
+    cap = args.cap  # O(1)
+    sim = simulate(times, graph, cap)  # O(n*(n+e))
+    predict = _predict()  # O(1)
+    coef = predict.load_coef(getattr(args, "coef", None))  # O(config size) file I/O
+    tail = args.tail_min if getattr(args, "tail_min", None) is not None else float(coef.get("schedule", {}).get("tail_min", 3.5))  # O(1)
+    target = args.target_min if getattr(args, "target_min", None) is not None else plan.header_target()  # O(C)
+    total = sim["build_min"] + tail  # O(1)
+    sim.update({  # O(n) dict update
+        "graph": graph, "times": times, "source": source, "tail_min": tail,  # O(1)
+        "total_min": total, "target_min": target,  # O(1)
+        "target_met": None if target is None else total <= target + 1e-9,  # O(1)
+        "cap": cap,  # O(1)
+    })  # O(1)
+    return sim  # O(1)
 
 
-def summary_line(rep: dict) -> str:
-    path = " → ".join(rep["critical_path"]) or "-"
-    line = (f"critical path: {path} ({rep['critical_path_min']:.1f} min) · peak width {rep['peak_width']} · "
-            f"predicted build {rep['build_min']:.1f} min · predicted total ≈ {rep['total_min']:.1f} min")
-    if rep["target_min"] is not None:
-        line += " (target ✓)" if rep["target_met"] else f" (target ✗ {rep['target_min']:.1f})"
-    return line
+def summary_line(rep: dict) -> str:  # O(path)
+    path = " → ".join(rep["critical_path"]) or "-"  # O(path)
+    line = (f"critical path: {path} ({rep['critical_path_min']:.1f} min) · peak width {rep['peak_width']} · "  # O(path)
+            f"predicted build {rep['build_min']:.1f} min · predicted total ≈ {rep['total_min']:.1f} min")  # O(1)
+    if rep["target_min"] is not None:  # O(1)
+        line += " (target ✓)" if rep["target_met"] else f" (target ✗ {rep['target_min']:.1f})"  # O(1)
+    return line  # O(1)
 
 
-def gantt_block(plan: Plan, rep: dict) -> list[str]:
-    lines = ["```mermaid", "%% schedule", "gantt", "  title Predicted schedule (mm:ss)",
-             "  dateFormat X", "  axisFormat %M:%S"]
-    by_lane: dict[int, list[str]] = {}
-    for t in sorted(rep["start"], key=lambda x: (rep["lane"][x], rep["start"][x], nkey(x))):
-        by_lane.setdefault(rep["lane"][t], []).append(t)
-    for ln in sorted(by_lane):
-        lines.append(f"  section lane {ln}")
-        for t in by_lane[ln]:
-            task = plan.by_id.get(t)
-            title = re.sub(r"[:;#,]", " ", task.title if task else "").strip()
-            label = f"{t} {title}".strip()[:40]
-            s = int(round(rep["start"][t] * 60))
-            d = max(1, int(round(rep["times"][t] * 60)))
-            lines.append(f"  {label} :{t.lower()}, {s}, {d}s")
-    lines.append("```")
-    return lines
+def gantt_block(plan: Plan, rep: dict) -> list[str]:  # O(n log n + n*s) total
+    lines = ["```mermaid", "%% schedule", "gantt", "  title Predicted schedule (mm:ss)",  # O(1)
+             "  dateFormat X", "  axisFormat %M:%S"]  # O(1)
+    by_lane: dict[int, list[str]] = {}  # O(1)
+    for t in sorted(rep["start"], key=lambda x: (rep["lane"][x], rep["start"][x], nkey(x))):  # O(n log n)
+        by_lane.setdefault(rep["lane"][t], []).append(t)  # O(1)
+    for ln in sorted(by_lane):  # O(lanes log lanes)
+        lines.append(f"  section lane {ln}")  # O(1)
+        for t in by_lane[ln]:  # O(n) total
+            task = plan.by_id.get(t)  # O(1)
+            title = re.sub(r"[:;#,]", " ", task.title if task else "").strip()  # O(s)
+            label = f"{t} {title}".strip()[:40]  # O(1)
+            s = int(round(rep["start"][t] * 60))  # O(1)
+            d = max(1, int(round(rep["times"][t] * 60)))  # O(1)
+            lines.append(f"  {label} :{t.lower()}, {s}, {d}s")  # O(1)
+    lines.append("```")  # O(1)
+    return lines  # O(1)
 
 
-def insert_schedule(plan: Plan, rep: dict) -> None:
-    new = gantt_block(plan, rep) + ["", summary_line(rep)]
-    old = None
-    for b in plan.mermaid_blocks():
-        if any(re.match(r"^\s*%%\s*schedule\b", ln) for ln in b.content):
-            old = b
-            break
-    if old is not None:
-        s, e = old.start, old.end + 1
-        k = e
-        while k < len(plan.lines) and not plan.lines[k].strip():
-            k += 1
-        if k < len(plan.lines) and plan.lines[k].startswith("critical path:"):
-            e = k + 1
-        plan.lines[s:e] = new
-    else:
-        blocks = find_taskgraph_blocks(plan)
-        if not blocks:
-            raise PlanError("no '%% taskgraph' block found in plan")
-        at = blocks[-1][0].end + 1
-        plan.lines[at:at] = [""] + new
-    if plan.path is None:
-        return
-    plan.path.write_bytes(plan.to_text().encode("utf-8"))
+def insert_schedule(plan: Plan, rep: dict) -> None:  # O(L+C+n log n) total + file I/O
+    new = gantt_block(plan, rep) + ["", summary_line(rep)]  # O(n log n)
+    old = None  # O(1)
+    for b in plan.mermaid_blocks():  # O(b) iterations
+        if any(re.match(r"^\s*%%\s*schedule\b", ln) for ln in b.content):  # O(block lines*s)
+            old = b  # O(1)
+            break  # O(1)
+    if old is not None:  # O(1)
+        s, e = old.start, old.end + 1  # O(1)
+        k = e  # O(1)
+        while k < len(plan.lines) and not plan.lines[k].strip():  # O(blank lines) iterations
+            k += 1  # O(1)
+        if k < len(plan.lines) and plan.lines[k].startswith("critical path:"):  # O(1)
+            e = k + 1  # O(1)
+        plan.lines[s:e] = new  # O(L) slice assign
+    else:  # O(1)
+        blocks = find_taskgraph_blocks(plan)  # O(L)
+        if not blocks:  # O(1)
+            raise PlanError("no '%% taskgraph' block found in plan")  # O(1)
+        at = blocks[-1][0].end + 1  # O(1)
+        plan.lines[at:at] = [""] + new  # O(L) list insert
+    if plan.path is None:  # O(1)
+        return  # O(1)
+    plan.path.write_bytes(plan.to_text().encode("utf-8"))  # O(C) encode + file write I/O
 
 
 # --------------------------------------------------------------------------
 # Signatures and stubs
 # --------------------------------------------------------------------------
 
-def parse_signature(item: str) -> dict | None:
-    s = strip_ticks(item)
-    s = re.sub(r"\s+\((T\d+[a-z]*(?:\s*[,/]\s*T\d+[a-z]*)*)\)\s*$", "", s)
-    m = re.match(r"^([A-Za-z_][\w.]*)\s*\(", s)
-    if not m:
-        return None
-    depth, close = 0, None
-    for i in range(m.end() - 1, len(s)):
-        if s[i] in "([{":
-            depth += 1
-        elif s[i] in ")]}":
-            depth -= 1
-            if depth == 0:
-                close = i
-                break
-    if close is None:
-        return None
-    args = s[m.end():close].strip()
-    rest = s[close + 1:].strip()
-    ret = None
-    if rest.startswith("->"):
-        ret = strip_ticks(rest[2:]).rstrip(".;,").strip() or None
-    segs = m.group(1).split(".")
-    member = segs[-1]
-    cls, mod = None, segs[:-1]
-    if len(segs) >= 2 and segs[-2][:1].isupper():
-        cls, mod = segs[-2], segs[:-2]
-    elif member[:1].isupper():
-        cls, member, mod = member, "__init__", segs[:-1]
-    return {"name": m.group(1), "args": args, "ret": ret, "module": mod, "cls": cls, "member": member, "item": s}
+def parse_signature(item: str) -> dict | None:  # O(s) total
+    s = strip_ticks(item)  # O(1)
+    s = re.sub(r"\s+\((T\d+[a-z]*(?:\s*[,/]\s*T\d+[a-z]*)*)\)\s*$", "", s)  # O(s)
+    m = re.match(r"^([A-Za-z_][\w.]*)\s*\(", s)  # O(1)
+    if not m:  # O(1)
+        return None  # O(1)
+    depth, close = 0, None  # O(1)
+    for i in range(m.end() - 1, len(s)):  # O(s) iterations
+        if s[i] in "([{":  # O(1)
+            depth += 1  # O(1)
+        elif s[i] in ")]}":  # O(1)
+            depth -= 1  # O(1)
+            if depth == 0:  # O(1)
+                close = i  # O(1)
+                break  # O(1)
+    if close is None:  # O(1)
+        return None  # O(1)
+    args = s[m.end():close].strip()  # O(s)
+    rest = s[close + 1:].strip()  # O(1)
+    ret = None  # O(1)
+    if rest.startswith("->"):  # O(1)
+        ret = strip_ticks(rest[2:]).rstrip(".;,").strip() or None  # O(s)
+    segs = m.group(1).split(".")  # O(s)
+    member = segs[-1]  # O(1)
+    cls, mod = None, segs[:-1]  # O(1)
+    if len(segs) >= 2 and segs[-2][:1].isupper():  # O(1)
+        cls, mod = segs[-2], segs[:-2]  # O(1)
+    elif member[:1].isupper():  # O(1)
+        cls, member, mod = member, "__init__", segs[:-1]  # O(1)
+    return {"name": m.group(1), "args": args, "ret": ret, "module": mod, "cls": cls, "member": member, "item": s}  # O(1)
 
 
-def param_names(args: str) -> list[str]:
-    names = []
-    for p in split_top_level(args):
-        p = p.strip()
-        if p in ("/", "*"):
-            continue
-        p = p.lstrip("*")
-        names.append(re.split(r"[:=\s]", p, 1)[0])
-    return names
+def param_names(args: str) -> list[str]:  # O(s) total
+    names = []  # O(1)
+    for p in split_top_level(args):  # O(params) iterations
+        p = p.strip()  # O(s)
+        if p in ("/", "*"):  # O(1)
+            continue  # O(1)
+        p = p.lstrip("*")  # O(s)
+        names.append(re.split(r"[:=\s]", p, 1)[0])  # O(s)
+    return names  # O(1)
 
 
-def resolve_module(prefix: list[str], owned: list[str]) -> tuple[str | None, str | None]:
-    """Return (relative path, warning)."""
-    if not prefix:
-        if len(owned) == 1:
-            return owned[0], None
-        non_init = [o for o in owned if not o.endswith("__init__.py")]
-        if len(non_init) == 1:
-            return non_init[0], None
-        return None, "cannot tell which owned file holds it (name a module in the Produces line)"
-    p = "/".join(prefix)
-    cands = [o for o in owned if o[:-3] == p or o[:-3].endswith("/" + p)]
-    if len(cands) == 1:
-        return cands[0], None
-    stem = prefix[-1]
-    cands = [o for o in owned if o.rsplit("/", 1)[-1][:-3] == stem]
-    if len(cands) == 1:
-        return cands[0], None
-    return p + ".py", f"module {'.'.join(prefix)!r} is not in the task's Owns; using {p}.py"
+def resolve_module(prefix: list[str], owned: list[str]) -> tuple[str | None, str | None]:  # O(o*s) total
+    """Return (relative path, warning)."""  # O(1)
+    if not prefix:  # O(1)
+        if len(owned) == 1:  # O(1)
+            return owned[0], None  # O(1)
+        non_init = [o for o in owned if not o.endswith("__init__.py")]  # O(o*s)
+        if len(non_init) == 1:  # O(1)
+            return non_init[0], None  # O(1)
+        return None, "cannot tell which owned file holds it (name a module in the Produces line)"  # O(1)
+    p = "/".join(prefix)  # O(1)
+    cands = [o for o in owned if o[:-3] == p or o[:-3].endswith("/" + p)]  # O(o*s)
+    if len(cands) == 1:  # O(1)
+        return cands[0], None  # O(1)
+    stem = prefix[-1]  # O(1)
+    cands = [o for o in owned if o.rsplit("/", 1)[-1][:-3] == stem]  # O(o*s)
+    if len(cands) == 1:  # O(1)
+        return cands[0], None  # O(1)
+    return p + ".py", f"module {'.'.join(prefix)!r} is not in the task's Owns; using {p}.py"  # O(s)
 
 
-def _doc(text: str, indent: str) -> str:
-    text = text.replace("\\", "\\\\").replace('"""', "'''")
-    return f'{indent}"""{text}"""'
+def _doc(text: str, indent: str) -> str:  # O(s)
+    text = text.replace("\\", "\\\\").replace('"""', "'''")  # O(s)
+    return f'{indent}"""{text}"""'  # O(s)
 
 
-def _def_source(sig: dict, indent: str, tid: str, contract: str, is_method: bool) -> str:
-    args = sig["args"]
-    if is_method:
-        first = param_names(args)[:1]
-        if not first or first[0] not in ("self", "cls"):
-            args = "self" + (", " + args if args else "")
-    ret = f" -> {sig['ret']}" if sig["ret"] else ""
-    doc = f"Contract: {contract}" if contract else f"Contract: see plan task {tid}."
-    body = f'{indent}def {sig["member"]}({args}){ret}:\n{_doc(doc, indent + "    ")}\n{indent}    raise NotImplementedError("{tid}")\n'
-    return body
+def _def_source(sig: dict, indent: str, tid: str, contract: str, is_method: bool) -> str:  # O(s) total
+    args = sig["args"]  # O(1)
+    if is_method:  # O(1)
+        first = param_names(args)[:1]  # O(s)
+        if not first or first[0] not in ("self", "cls"):  # O(1)
+            args = "self" + (", " + args if args else "")  # O(s)
+    ret = f" -> {sig['ret']}" if sig["ret"] else ""  # O(1)
+    doc = f"Contract: {contract}" if contract else f"Contract: see plan task {tid}."  # O(1)
+    body = f'{indent}def {sig["member"]}({args}){ret}:\n{_doc(doc, indent + "    ")}\n{indent}    raise NotImplementedError("{tid}")\n'  # O(s)
+    return body  # O(1)
 
 
-def build_stub_defs(task: Task, warnings: list[str]):
-    """Yield (relative path, sig, source-for-def, contract) for each Produces signature."""
-    out = []
-    for item in task.produces:
-        sig = parse_signature(item)
-        if sig is None:
-            continue
-        path, warn = resolve_module(sig["module"], task.owned_sources)
-        if warn:
-            warnings.append(f"{task.id}: {sig['name']}: {warn}")
-        if path is None:
-            continue
-        for attempt in (sig, dict(sig, ret=None)):
-            try:
-                compile("from __future__ import annotations\n" + _def_source(attempt, "", task.id, "", False), "<stub>", "exec")
-                sig = attempt
-                break
-            except SyntaxError:
-                sig = None
-        if sig is None:
-            warnings.append(f"{task.id}: cannot parse signature {item!r}; skipped")
-            continue
-        out.append((path, sig))
-    return out
+def build_stub_defs(task: Task, warnings: list[str]):  # O(q*(k*s + s)) total
+    """Yield (relative path, sig, source-for-def, contract) for each Produces signature."""  # O(1)
+    out = []  # O(1)
+    for item in task.produces:  # O(q) iterations
+        sig = parse_signature(item)  # O(s)
+        if sig is None:  # O(1)
+            continue  # O(1)
+        path, warn = resolve_module(sig["module"], task.owned_sources)  # O(k*s*A + o*s) owned_sources recomputed per item
+        if warn:  # O(1)
+            warnings.append(f"{task.id}: {sig['name']}: {warn}")  # O(1)
+        if path is None:  # O(1)
+            continue  # O(1)
+        for attempt in (sig, dict(sig, ret=None)):  # O(1) iterations (2 attempts)
+            try:  # O(1)
+                compile("from __future__ import annotations\n" + _def_source(attempt, "", task.id, "", False), "<stub>", "exec")  # O(s) compile
+                sig = attempt  # O(1)
+                break  # O(1)
+            except SyntaxError:  # O(1)
+                sig = None  # O(1)
+        if sig is None:  # O(1)
+            warnings.append(f"{task.id}: cannot parse signature {item!r}; skipped")  # O(s)
+            continue  # O(1)
+        out.append((path, sig))  # O(1)
+    return out  # O(1)
 
 
-def render_module(path: str, entries: list[tuple[Task, dict]], warnings: list[str]) -> str:
-    funcs: list[tuple[Task, dict]] = []
-    classes: dict[str, list[tuple[Task, dict]]] = {}
-    seen = set()
-    for task, sig in entries:
-        key = (sig["cls"], sig["member"])
-        if key in seen:
-            warnings.append(f"{path}: duplicate Produces for {sig['name']} ({task.id}); kept the first")
-            continue
-        seen.add(key)
-        if sig["cls"]:
-            classes.setdefault(sig["cls"], []).append((task, sig))
-        else:
-            funcs.append((task, sig))
-    names = [s["member"] for _, s in funcs] + list(classes)
-    out = ['"""Generated interface stubs (plan_tools.py stubs). The stub is the contract:',
-           'do not change a signature without a coordinator ruling."""',
-           "from __future__ import annotations", "",
-           "__all__ = [" + ", ".join(json.dumps(n) for n in names) + "]", ""]
-    for task, sig in funcs:
-        out.append("")
-        out.append(_def_source(sig, "", task.id, task.contract_text, False).rstrip("\n"))
-        out.append("")
-    for cname, items in classes.items():
-        first = items[0][0]
-        doc = f"Contract: {first.contract_text}" if first.contract_text else f"Contract: see plan task {first.id}."
-        out.append("")
-        out.append(f"class {cname}:")
-        out.append(_doc(doc, "    "))
-        for task, sig in items:
-            out.append("")
-            out.append(_def_source(sig, "    ", task.id, task.contract_text, True).rstrip("\n"))
-        out.append("")
-    return "\n".join(out).rstrip("\n") + "\n"
+def render_module(path: str, entries: list[tuple[Task, dict]], warnings: list[str]) -> str:  # O(E*s) total
+    funcs: list[tuple[Task, dict]] = []  # O(1)
+    classes: dict[str, list[tuple[Task, dict]]] = {}  # O(1)
+    seen = set()  # O(1)
+    for task, sig in entries:  # O(E) iterations
+        key = (sig["cls"], sig["member"])  # O(1)
+        if key in seen:  # O(1)
+            warnings.append(f"{path}: duplicate Produces for {sig['name']} ({task.id}); kept the first")  # O(1)
+            continue  # O(1)
+        seen.add(key)  # O(1)
+        if sig["cls"]:  # O(1)
+            classes.setdefault(sig["cls"], []).append((task, sig))  # O(1)
+        else:  # O(1)
+            funcs.append((task, sig))  # O(1)
+    names = [s["member"] for _, s in funcs] + list(classes)  # O(E)
+    out = ['"""Generated interface stubs (plan_tools.py stubs). The stub is the contract:',  # O(E)
+           'do not change a signature without a coordinator ruling."""',  # O(1)
+           "from __future__ import annotations", "",  # O(1)
+           "__all__ = [" + ", ".join(json.dumps(n) for n in names) + "]", ""]  # O(E) json.dumps per name
+    for task, sig in funcs:  # O(funcs) iterations
+        out.append("")  # O(1)
+        out.append(_def_source(sig, "", task.id, task.contract_text, False).rstrip("\n"))  # O(s)
+        out.append("")  # O(1)
+    for cname, items in classes.items():  # O(classes) iterations
+        first = items[0][0]  # O(1)
+        doc = f"Contract: {first.contract_text}" if first.contract_text else f"Contract: see plan task {first.id}."  # O(1)
+        out.append("")  # O(1)
+        out.append(f"class {cname}:")  # O(1)
+        out.append(_doc(doc, "    "))  # O(1)
+        for task, sig in items:  # O(members) iterations
+            out.append("")  # O(1)
+            out.append(_def_source(sig, "    ", task.id, task.contract_text, True).rstrip("\n"))  # O(s)
+        out.append("")  # O(1)
+    return "\n".join(out).rstrip("\n") + "\n"  # O(output size)
 
 
-def import_check(path: Path) -> str | None:
-    name = f"_stubcheck_{abs(hash(str(path)))}"
-    try:
-        spec = importlib.util.spec_from_file_location(name, path)
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-    except Exception as exc:  # noqa: BLE001
-        return f"{type(exc).__name__}: {exc}"
-    finally:
-        sys.modules.pop(name, None)
-    return None
+def import_check(path: Path) -> str | None:  # O(module size) + exec
+    name = f"_stubcheck_{abs(hash(str(path)))}"  # O(s)
+    try:  # O(1)
+        spec = importlib.util.spec_from_file_location(name, path)  # O(1) stat I/O
+        mod = importlib.util.module_from_spec(spec)  # O(1)
+        spec.loader.exec_module(mod)  # O(module size) exec
+    except Exception as exc:  # noqa: BLE001 | O(1)
+        return f"{type(exc).__name__}: {exc}"  # O(1)
+    finally:  # O(1)
+        sys.modules.pop(name, None)  # O(1)
+    return None  # O(1)
 
 
-def cmd_stubs(args) -> int:
-    plan = Plan.load(args.plan)
-    root = Path(args.root)
-    warnings: list[str] = []
-    per_file: dict[str, list[tuple[Task, dict]]] = {}
-    for task in plan.tasks:
-        for path, sig in build_stub_defs(task, warnings):
-            per_file.setdefault(path, []).append((task, sig))
-    rc = 0
-    for rel in sorted(per_file):
-        target = root / rel
-        if target.exists():
-            print(f"skipped {rel} (exists)")
-            continue
-        src = render_module(rel, per_file[rel], warnings)
-        if args.dry_run:
-            print(f"would write {rel}")
-            continue
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(src, encoding="utf-8", newline="\n")
-        print(f"wrote {rel}")
-        err = import_check(target)
-        if err:
-            print(f"import check failed for {rel}: {err}", file=sys.stderr)
-            rc = 1
-    for w in warnings:
-        print(f"warning: {w}", file=sys.stderr)
-    if not per_file:
-        print("no stubbable Produces lines found")
-    return rc
+def cmd_stubs(args) -> int:  # O(C+L + E*s) total + file I/O
+    plan = Plan.load(args.plan)  # O(C+L) + file read
+    root = Path(args.root)  # O(1)
+    warnings: list[str] = []  # O(1)
+    per_file: dict[str, list[tuple[Task, dict]]] = {}  # O(1)
+    for task in plan.tasks:  # O(n) iterations
+        for path, sig in build_stub_defs(task, warnings):  # O(q*k*s)
+            per_file.setdefault(path, []).append((task, sig))  # O(1)
+    rc = 0  # O(1)
+    for rel in sorted(per_file):  # O(f) iterations; sorted O(f log f)
+        target = root / rel  # O(1)
+        if target.exists():  # O(1) stat I/O
+            print(f"skipped {rel} (exists)")  # O(1)
+            continue  # O(1)
+        src = render_module(rel, per_file[rel], warnings)  # O(E*s)
+        if args.dry_run:  # O(1)
+            print(f"would write {rel}")  # O(1)
+            continue  # O(1)
+        target.parent.mkdir(parents=True, exist_ok=True)  # O(1) mkdir I/O
+        target.write_text(src, encoding="utf-8", newline="\n")  # O(size) file write I/O
+        print(f"wrote {rel}")  # O(1)
+        err = import_check(target)  # O(module size) exec
+        if err:  # O(1)
+            print(f"import check failed for {rel}: {err}", file=sys.stderr)  # O(1)
+            rc = 1  # O(1)
+    for w in warnings:  # O(w) iterations
+        print(f"warning: {w}", file=sys.stderr)  # O(1)
+    if not per_file:  # O(1)
+        print("no stubbable Produces lines found")  # O(1)
+    return rc  # O(1)
 
 
 # --------------------------------------------------------------------------
 # taskgraph
 # --------------------------------------------------------------------------
 
-def mergeable_tasks(plan: Plan, graph, times, args) -> list[dict]:
-    predict = _predict()
-    models = predict.load_models(getattr(args, "models", None))
-    coef = predict.load_coef(getattr(args, "coef", None))
-    ctx: dict[str, int | None] = {}
-    known_time: dict[str, float | None] = {}
-    for tid in graph:
-        task = plan.by_id.get(tid)
-        if task is None:
-            ctx[tid], known_time[tid] = None, None
-            continue
-        ctx[tid], _ = effective_context(task, models, coef, bool(getattr(args, "stated", False)))
-        known_time[tid] = times.get(tid)
-    anc = ancestors(graph)
-    cp = set(simulate(times, graph, 1000)["critical_path"])
-    res = []
-    for tid in graph:
-        reasons = []
-        c, tm = ctx[tid], known_time[tid]
-        if c is not None and c - IMPLEMENTER_PREFIX < MERGE_MIN_VARIABLE:
-            reasons.append(f"variable context {(c - IMPLEMENTER_PREFIX) / 1000:.0f}k < {MERGE_MIN_VARIABLE // 1000}k")
-        if tm is not None and tm < MERGE_MIN_MINUTES:
-            reasons.append(f"predicted {tm:.1f} min < {MERGE_MIN_MINUTES:.0f} min")
-        if not reasons:
-            continue
-        task = plan.by_id[tid]
-        my_dirs = {o.rsplit("/", 1)[0] for o in task.owns if "/" in o}
-        cands = []
-        for other in graph:
-            if other == tid:
-                continue
-            adjacent = other in graph[tid] or tid in graph[other]
-            ot = plan.by_id.get(other)
-            same_pkg = bool(ot and my_dirs & {o.rsplit("/", 1)[0] for o in ot.owns if "/" in o})
-            if not (adjacent or same_pkg):
-                continue
-            independent = other not in anc[tid] and tid not in anc[other]
-            if independent and tid in cp and other in cp:
-                continue
-            merged = (c or IMPLEMENTER_PREFIX) + max(0, (ctx[other] or IMPLEMENTER_PREFIX) - IMPLEMENTER_PREFIX)
-            if merged > CTX_CEILING:
-                continue
-            cands.append((0 if adjacent else 1, merged, nkey(other), other))
-        cands.sort()
-        res.append({"task": tid, "reasons": reasons, "merge_with": cands[0][3] if cands else None})
-    return res
+def mergeable_tasks(plan: Plan, graph, times, args) -> list[dict]:  # O(n*p + e*n + n*(n+e) + n^2*k*s) total
+    predict = _predict()  # O(1)
+    models = predict.load_models(getattr(args, "models", None))  # O(config size) file I/O
+    coef = predict.load_coef(getattr(args, "coef", None))  # O(config size) file I/O
+    ctx: dict[str, int | None] = {}  # O(1)
+    known_time: dict[str, float | None] = {}  # O(1)
+    for tid in graph:  # O(n) iterations
+        task = plan.by_id.get(tid)  # O(1)
+        if task is None:  # O(1)
+            ctx[tid], known_time[tid] = None, None  # O(1)
+            continue  # O(1)
+        ctx[tid], _ = effective_context(task, models, coef, bool(getattr(args, "stated", False)))  # O(k*s + p)
+        known_time[tid] = times.get(tid)  # O(1)
+    anc = ancestors(graph)  # O(e*n)
+    cp = set(simulate(times, graph, 1000)["critical_path"])  # O(n*(n+e)) full simulation just for critical path
+    res = []  # O(1)
+    for tid in graph:  # O(n) iterations
+        reasons = []  # O(1)
+        c, tm = ctx[tid], known_time[tid]  # O(1)
+        if c is not None and c - IMPLEMENTER_PREFIX < MERGE_MIN_VARIABLE:  # O(1)
+            reasons.append(f"variable context {(c - IMPLEMENTER_PREFIX) / 1000:.0f}k < {MERGE_MIN_VARIABLE // 1000}k")  # O(1)
+        if tm is not None and tm < MERGE_MIN_MINUTES:  # O(1)
+            reasons.append(f"predicted {tm:.1f} min < {MERGE_MIN_MINUTES:.0f} min")  # O(1)
+        if not reasons:  # O(1)
+            continue  # O(1)
+        task = plan.by_id[tid]  # O(1)
+        my_dirs = {o.rsplit("/", 1)[0] for o in task.owns if "/" in o}  # O(k*s*A)
+        cands = []  # O(1)
+        for other in graph:  # O(n) iterations; n^2 pairs total
+            if other == tid:  # O(1)
+                continue  # O(1)
+            adjacent = other in graph[tid] or tid in graph[other]  # O(d) two list scans
+            ot = plan.by_id.get(other)  # O(1)
+            same_pkg = bool(ot and my_dirs & {o.rsplit("/", 1)[0] for o in ot.owns if "/" in o})  # O(k*s*A) re-parses other.owns per pair; hotspot
+            if not (adjacent or same_pkg):  # O(1)
+                continue  # O(1)
+            independent = other not in anc[tid] and tid not in anc[other]  # O(1)
+            if independent and tid in cp and other in cp:  # O(1)
+                continue  # O(1)
+            merged = (c or IMPLEMENTER_PREFIX) + max(0, (ctx[other] or IMPLEMENTER_PREFIX) - IMPLEMENTER_PREFIX)  # O(1)
+            if merged > CTX_CEILING:  # O(1)
+                continue  # O(1)
+            cands.append((0 if adjacent else 1, merged, nkey(other), other))  # O(1)
+        cands.sort()  # O(n log n)
+        res.append({"task": tid, "reasons": reasons, "merge_with": cands[0][3] if cands else None})  # O(1)
+    return res  # O(1)
 
 
-def cmd_taskgraph(args) -> int:
-    plan = Plan.load(args.plan)
-    graph = parse_taskgraph(plan)
-    seams = seams_of(graph)
-    times, _ = effective_times(plan, graph, args)
-    merges = mergeable_tasks(plan, graph, times, args)
-    if args.format == "full":
-        print(json.dumps({"graph": graph, "seams": seams, "mergeable": merges}, ensure_ascii=False, indent=2))
-    else:
-        print(json.dumps(graph, ensure_ascii=False, indent=2))
-        for s in seams:
-            print(f"seam {s}", file=sys.stderr)
-        for m in merges:
-            to = f"merge with {m['merge_with']}" if m["merge_with"] else "no safe merge partner"
-            print(f"warning: mergeable {m['task']} ({'; '.join(m['reasons'])}); {to}", file=sys.stderr)
-    return 0
+def cmd_taskgraph(args) -> int:  # O(C+L + parse + n*p + merge) total
+    plan = Plan.load(args.plan)  # O(C+L)
+    graph = parse_taskgraph(plan)  # O(L*s + R*M + e log n)
+    seams = seams_of(graph)  # O(n+e)
+    times, _ = effective_times(plan, graph, args)  # O(n*p)
+    merges = mergeable_tasks(plan, graph, times, args)  # O(n^2*k*s)
+    if args.format == "full":  # O(1)
+        print(json.dumps({"graph": graph, "seams": seams, "mergeable": merges}, ensure_ascii=False, indent=2))  # O(n+e) output
+    else:  # O(1)
+        print(json.dumps(graph, ensure_ascii=False, indent=2))  # O(n+e) output
+        for s in seams:  # O(e) iterations
+            print(f"seam {s}", file=sys.stderr)  # O(1)
+        for m in merges:  # O(n) iterations
+            to = f"merge with {m['merge_with']}" if m["merge_with"] else "no safe merge partner"  # O(1)
+            print(f"warning: mergeable {m['task']} ({'; '.join(m['reasons'])}); {to}", file=sys.stderr)  # O(1)
+    return 0  # O(1)
 
 
 # --------------------------------------------------------------------------
 # schedule
 # --------------------------------------------------------------------------
 
-def cmd_schedule(args) -> int:
-    plan = Plan.load(args.plan)
-    rep = schedule_report(plan, args)
-    if args.insert:
-        insert_schedule(plan, rep)
-    if args.json:
-        out = {k: rep[k] for k in ("critical_path", "critical_path_min", "peak_width", "build_min", "tail_min",
-                                   "total_min", "target_min", "target_met", "cap")}
-        out["tasks"] = {t: {"min": round(rep["times"][t], 3), "start": round(rep["start"][t], 3),
-                            "end": round(rep["end"][t], 3), "lane": rep["lane"][t], "source": rep["source"][t]}
-                        for t in rep["times"]}
-        print(json.dumps(out, ensure_ascii=False, indent=2))
-    else:
-        print(summary_line(rep))
-        for t in sorted(rep["start"], key=lambda x: (rep["start"][x], nkey(x))):
-            print(f"  {t}: lane {rep['lane'][t]}, {rep['start'][t]:.1f} to {rep['end'][t]:.1f} min ({rep['source'][t]})")
-        if args.insert:
-            print(f"inserted schedule into {args.plan}")
-    return 0
+def cmd_schedule(args) -> int:  # O(C+L + schedule) total
+    plan = Plan.load(args.plan)  # O(1)
+    rep = schedule_report(plan, args)  # O(n*(n+e) + n*p)
+    if args.insert:  # O(1)
+        insert_schedule(plan, rep)  # O(L+C) + file write I/O
+    if args.json:  # O(1)
+        out = {k: rep[k] for k in ("critical_path", "critical_path_min", "peak_width", "build_min", "tail_min",  # O(1)
+                                   "total_min", "target_min", "target_met", "cap")}  # O(1)
+        out["tasks"] = {t: {"min": round(rep["times"][t], 3), "start": round(rep["start"][t], 3),  # O(n)
+                            "end": round(rep["end"][t], 3), "lane": rep["lane"][t], "source": rep["source"][t]}  # O(1)
+                        for t in rep["times"]}  # O(1)
+        print(json.dumps(out, ensure_ascii=False, indent=2))  # O(n) output
+    else:  # O(1)
+        print(summary_line(rep))  # O(path)
+        for t in sorted(rep["start"], key=lambda x: (rep["start"][x], nkey(x))):  # O(n log n) sort; O(n) iterations
+            print(f"  {t}: lane {rep['lane'][t]}, {rep['start'][t]:.1f} to {rep['end'][t]:.1f} min ({rep['source'][t]})")  # O(1)
+        if args.insert:  # O(1)
+            print(f"inserted schedule into {args.plan}")  # O(1)
+    return 0  # O(1)
 
 
 # --------------------------------------------------------------------------
 # lint
 # --------------------------------------------------------------------------
 
-PLACEHOLDERS = [
-    (r"\bTBD\b", "TBD"),
-    (r"\bTODO\b", "TODO"),
-    (r"handle edge cases", "'handle edge cases'"),
-    (r"add (?:appropriate )?error handling", "'add error handling'"),
-    (r"similar to task\s+\w+", "'similar to Task N'"),
-    (r"tests? for the above", "'tests for the above'"),
-    (r"\bfill in later\b|\bto be decided\b", "deferred detail"),
-]
-DIAGRAM_TYPES = ("flowchart", "graph", "sequencediagram", "statediagram", "statediagram-v2", "gantt", "classdiagram",
-                 "erdiagram", "journey", "pie", "mindmap", "timeline", "gitgraph", "quadrantchart", "requirementdiagram")
-SPEC_SKIP = {"overview", "introduction", "background", "goals", "non-goals", "glossary", "contents",
-             "table of contents", "references", "open questions", "appendix", "summary", "status"}
+PLACEHOLDERS = [  # O(1)
+    (r"\bTBD\b", "TBD"),  # O(1)
+    (r"\bTODO\b", "TODO"),  # O(1)
+    (r"handle edge cases", "'handle edge cases'"),  # O(1)
+    (r"add (?:appropriate )?error handling", "'add error handling'"),  # O(1)
+    (r"similar to task\s+\w+", "'similar to Task N'"),  # O(1)
+    (r"tests? for the above", "'tests for the above'"),  # O(1)
+    (r"\bfill in later\b|\bto be decided\b", "deferred detail"),  # O(1)
+]  # O(1)
+DIAGRAM_TYPES = ("flowchart", "graph", "sequencediagram", "statediagram", "statediagram-v2", "gantt", "classdiagram",  # O(1)
+                 "erdiagram", "journey", "pie", "mindmap", "timeline", "gitgraph", "quadrantchart", "requirementdiagram")  # O(1)
+SPEC_SKIP = {"overview", "introduction", "background", "goals", "non-goals", "glossary", "contents",  # O(1)
+             "table of contents", "references", "open questions", "appendix", "summary", "status"}  # O(1)
 
 
-def check_diagram(block: FenceBlock) -> str | None:
-    lines = [ln for ln in block.content if ln.strip() and not ln.strip().startswith("%%")]
-    if not lines:
-        return "empty mermaid block"
-    first = lines[0].strip().split()[0].lower()
-    if first not in DIAGRAM_TYPES:
-        return f"unknown diagram type {lines[0].strip().split()[0]!r}"
-    if first in ("flowchart", "graph"):
-        subs = sum(1 for ln in lines if ln.strip().lower().startswith("subgraph"))
-        ends = sum(1 for ln in lines if ln.strip().lower() == "end")
-        if subs != ends:
-            return "unbalanced subgraph/end"
-    body = "\n".join(lines)
-    body = re.sub(r'"[^"\n]*"', "", body)
-    body = re.sub(r"<[^>\n]*>", "", body)
-    for o, c in (("[", "]"), ("{", "}")):
-        if body.count(o) != body.count(c):
-            return f"unbalanced {o}{c}"
-    if first in ("flowchart", "graph") and body.count("(") != body.count(")"):
-        return "unbalanced ()"
-    return None
+def check_diagram(block: FenceBlock) -> str | None:  # O(B) total, B = block chars
+    lines = [ln for ln in block.content if ln.strip() and not ln.strip().startswith("%%")]  # O(B)
+    if not lines:  # O(1)
+        return "empty mermaid block"  # O(1)
+    first = lines[0].strip().split()[0].lower()  # O(s)
+    if first not in DIAGRAM_TYPES:  # O(1)
+        return f"unknown diagram type {lines[0].strip().split()[0]!r}"  # O(1)
+    if first in ("flowchart", "graph"):  # O(1)
+        subs = sum(1 for ln in lines if ln.strip().lower().startswith("subgraph"))  # O(B)
+        ends = sum(1 for ln in lines if ln.strip().lower() == "end")  # O(B)
+        if subs != ends:  # O(1)
+            return "unbalanced subgraph/end"  # O(1)
+    body = "\n".join(lines)  # O(B)
+    body = re.sub(r'"[^"\n]*"', "", body)  # O(B)
+    body = re.sub(r"<[^>\n]*>", "", body)  # O(B)
+    for o, c in (("[", "]"), ("{", "}")):  # O(1) iterations (2 pairs)
+        if body.count(o) != body.count(c):  # O(B)
+            return f"unbalanced {o}{c}"  # O(1)
+    if first in ("flowchart", "graph") and body.count("(") != body.count(")"):  # O(B)
+        return "unbalanced ()"  # O(1)
+    return None  # O(1)
 
 
-def sig_key(sig: dict) -> str:
-    return f"{sig['cls']}.{sig['member']}" if sig["cls"] else sig["member"]
+def sig_key(sig: dict) -> str:  # O(1)
+    return f"{sig['cls']}.{sig['member']}" if sig["cls"] else sig["member"]  # O(1)
 
 
-def lint_plan(plan: Plan, args) -> tuple[list[str], list[str]]:
-    issues: list[str] = []
-    warnings: list[str] = []
-    ids = [t.id for t in plan.tasks]
-    for tid in sorted({i for i in ids if ids.count(i) > 1}, key=nkey):
-        issues.append(f"duplicate task heading {tid}")
-    if not plan.tasks:
-        issues.append("no task headings (### Tn ...) found")
+def lint_plan(plan: Plan, args) -> tuple[list[str], list[str]]:  # O(n^2*k*s + e*n + C*P + n*p + merge/simulate) total
+    issues: list[str] = []  # O(1)
+    warnings: list[str] = []  # O(1)
+    ids = [t.id for t in plan.tasks]  # O(n)
+    for tid in sorted({i for i in ids if ids.count(i) > 1}, key=nkey):  # O(n^2) ids.count per distinct id; hotspot
+        issues.append(f"duplicate task heading {tid}")  # O(1)
+    if not plan.tasks:  # O(1)
+        issues.append("no task headings (### Tn ...) found")  # O(1)
 
     # placeholders (outside code fences)
-    for i, ln in enumerate(plan.lines):
-        if plan.fenced[i]:
-            continue
-        for pat, label in PLACEHOLDERS:
-            if re.search(pat, ln, re.I):
-                issues.append(f"placeholder {label} at line {i + 1}")
+    for i, ln in enumerate(plan.lines):  # O(L) iterations
+        if plan.fenced[i]:  # O(1)
+            continue  # O(1)
+        for pat, label in PLACEHOLDERS:  # O(P) iterations, P=7 patterns
+            if re.search(pat, ln, re.I):  # O(s) regex per pattern
+                issues.append(f"placeholder {label} at line {i + 1}")  # O(1)
 
-    for t in plan.tasks:
-        if not t.has_features and t.stated_time is None:
-            warnings.append(f"WARNING: {t.id} has no features (Components, LOC owned, Tests) and no Est. time; "
-                            "the predictor will use defaults")
+    for t in plan.tasks:  # O(n) iterations
+        if not t.has_features and t.stated_time is None:  # O(k*s)
+            warnings.append(f"WARNING: {t.id} has no features (Components, LOC owned, Tests) and no Est. time; "  # O(1)
+                            "the predictor will use defaults")  # O(1)
 
     # Owns present, parallel tasks do not share files
-    graph = None
-    try:
-        graph = parse_taskgraph(plan)
-    except PlanError as exc:
-        issues.append(f"taskgraph: {exc}")
-    for t in plan.tasks:
-        if not t.owns:
-            issues.append(f"{t.id}: no **Owns:** line")
-    if graph:
-        anc = ancestors(graph)
-        for a_i, a in enumerate(plan.tasks):
-            for b in plan.tasks[a_i + 1:]:
-                if a.id in graph and b.id in graph and a.id not in anc[b.id] and b.id not in anc[a.id]:
-                    shared = sorted(set(a.owns) & set(b.owns))
-                    if shared:
-                        issues.append(f"{a.id} and {b.id} can run in parallel but both own {', '.join(shared)}")
+    graph = None  # O(1)
+    try:  # O(1)
+        graph = parse_taskgraph(plan)  # O(L*s + R*M + e log n)
+    except PlanError as exc:  # O(1)
+        issues.append(f"taskgraph: {exc}")  # O(1)
+    for t in plan.tasks:  # O(n) iterations
+        if not t.owns:  # O(k*s*A)
+            issues.append(f"{t.id}: no **Owns:** line")  # O(1)
+    if graph:  # O(1)
+        anc = ancestors(graph)  # O(e*n)
+        for a_i, a in enumerate(plan.tasks):  # O(n) iterations
+            for b in plan.tasks[a_i + 1:]:  # O(n) iterations; n^2 pairs total
+                if a.id in graph and b.id in graph and a.id not in anc[b.id] and b.id not in anc[a.id]:  # O(1)
+                    shared = sorted(set(a.owns) & set(b.owns))  # O(k*s*A) re-parses owns per pair; hotspot
+                    if shared:  # O(1)
+                        issues.append(f"{a.id} and {b.id} can run in parallel but both own {', '.join(shared)}")  # O(1)
 
     # Consumes / Produces consistency
-    produced: dict[str, list[tuple[str, dict]]] = {}
-    for t in plan.tasks:
-        for item in t.produces:
-            sig = parse_signature(item)
-            if sig:
-                produced.setdefault(sig_key(sig), []).append((t.id, sig))
-    for t in plan.tasks:
-        for item in t.consumes:
-            sig = parse_signature(item)
-            if not sig:
-                continue
-            ref = re.search(r"\s+\((T\d+[a-z]*(?:\s*[,/]\s*T\d+[a-z]*)*)\)\s*$", strip_ticks(item))
-            refs = re.findall(TASK_ID, ref.group(1)) if ref else []
-            cands = produced.get(sig_key(sig), [])
-            if refs:
-                cands = [c for c in cands if c[0] in refs]
-            if not cands:
-                where = f" from {'/'.join(refs)}" if refs else ""
-                issues.append(f"{t.id} consumes {sig['name']}{where}, but no Produces line defines it")
-                continue
-            ok = False
-            for pid, psig in cands:
-                same_params = param_names(psig["args"]) == param_names(sig["args"])
-                same_ret = not (psig["ret"] and sig["ret"]) or re.sub(r"\s+", "", psig["ret"]) == re.sub(r"\s+", "", sig["ret"])
-                if same_params and same_ret:
-                    ok = True
-                    break
-            if not ok:
-                pid, psig = cands[0]
-                issues.append(f"{t.id} consumes {sig['name']}({sig['args']}) but {pid} produces "
-                              f"{psig['name']}({psig['args']})" + (f" -> {psig['ret']}" if psig["ret"] else ""))
+    produced: dict[str, list[tuple[str, dict]]] = {}  # O(1)
+    for t in plan.tasks:  # O(n) iterations
+        for item in t.produces:  # O(q) iterations; produces O(k*s)
+            sig = parse_signature(item)  # O(s)
+            if sig:  # O(1)
+                produced.setdefault(sig_key(sig), []).append((t.id, sig))  # O(1)
+    for t in plan.tasks:  # O(1)
+        for item in t.consumes:  # O(q) iterations
+            sig = parse_signature(item)  # O(s)
+            if not sig:  # O(1)
+                continue  # O(1)
+            ref = re.search(r"\s+\((T\d+[a-z]*(?:\s*[,/]\s*T\d+[a-z]*)*)\)\s*$", strip_ticks(item))  # O(s)
+            refs = re.findall(TASK_ID, ref.group(1)) if ref else []  # O(s)
+            cands = produced.get(sig_key(sig), [])  # O(1)
+            if refs:  # O(1)
+                cands = [c for c in cands if c[0] in refs]  # O(cands*refs)
+            if not cands:  # O(1)
+                where = f" from {'/'.join(refs)}" if refs else ""  # O(1)
+                issues.append(f"{t.id} consumes {sig['name']}{where}, but no Produces line defines it")  # O(1)
+                continue  # O(1)
+            ok = False  # O(1)
+            for pid, psig in cands:  # O(cands) iterations
+                same_params = param_names(psig["args"]) == param_names(sig["args"])  # O(s)
+                same_ret = not (psig["ret"] and sig["ret"]) or re.sub(r"\s+", "", psig["ret"]) == re.sub(r"\s+", "", sig["ret"])  # O(s)
+                if same_params and same_ret:  # O(1)
+                    ok = True  # O(1)
+                    break  # O(1)
+            if not ok:  # O(1)
+                pid, psig = cands[0]  # O(1)
+                issues.append(f"{t.id} consumes {sig['name']}({sig['args']}) but {pid} produces "  # O(s)
+                              f"{psig['name']}({psig['args']})" + (f" -> {psig['ret']}" if psig["ret"] else ""))  # O(1)
 
     # diagrams
-    for b in plan.mermaid_blocks():
-        err = check_diagram(b)
-        if err:
-            issues.append(f"mermaid block at line {b.start + 1}: {err}")
+    for b in plan.mermaid_blocks():  # O(b) iterations
+        err = check_diagram(b)  # O(B)
+        if err:  # O(1)
+            issues.append(f"mermaid block at line {b.start + 1}: {err}")  # O(1)
 
     # size caps
-    max_chars = getattr(args, "max_chars", DEFAULT_MAX_CHARS)
-    if len(plan.text) > max_chars:
-        issues.append(f"plan is {len(plan.text)} chars, over the {max_chars} cap")
-    predict = _predict()
-    models = predict.load_models(getattr(args, "models", None))
-    coef = predict.load_coef(getattr(args, "coef", None))
-    for t in plan.tasks:
-        c, src = effective_context(t, models, coef, bool(getattr(args, "stated", False)))
-        if c is not None and c > CTX_CEILING:
-            what = "Est. context" if src == "stated" else "predicted context"
-            issues.append(f"{t.id}: {what} {c // 1000}k is over the {CTX_CEILING // 1000}k ceiling; split it")
-        if src == "predicted" and t.stated_context:
-            if abs(t.stated_context - c) / c > 0.25:
-                warnings.append(f"NOTE: {t.id} states Est. context {t.stated_context // 1000}k but the predictor "
-                                f"says {c // 1000}k (over 25% apart); the predicted value is used")
+    max_chars = getattr(args, "max_chars", DEFAULT_MAX_CHARS)  # O(1)
+    if len(plan.text) > max_chars:  # O(1)
+        issues.append(f"plan is {len(plan.text)} chars, over the {max_chars} cap")  # O(1)
+    predict = _predict()  # O(1)
+    models = predict.load_models(getattr(args, "models", None))  # O(config size) file I/O
+    coef = predict.load_coef(getattr(args, "coef", None))  # O(config size) file I/O
+    for t in plan.tasks:  # O(n) iterations
+        c, src = effective_context(t, models, coef, bool(getattr(args, "stated", False)))  # O(k*s + p)
+        if c is not None and c > CTX_CEILING:  # O(1)
+            what = "Est. context" if src == "stated" else "predicted context"  # O(1)
+            issues.append(f"{t.id}: {what} {c // 1000}k is over the {CTX_CEILING // 1000}k ceiling; split it")  # O(1)
+        if src == "predicted" and t.stated_context:  # O(1)
+            if abs(t.stated_context - c) / c > 0.25:  # O(1)
+                warnings.append(f"NOTE: {t.id} states Est. context {t.stated_context // 1000}k but the predictor "  # O(s)
+                                f"says {c // 1000}k (over 25% apart); the predicted value is used")  # O(1)
 
     # mergeable / over cap, and the time-target warning
-    miss: str | None = None
-    if graph is not None and not find_cycle(graph):
-        try:
-            times, _ = effective_times(plan, graph, args)
-        except PlanError as exc:
-            issues.append(str(exc))
-            times = None
-        if times is not None:
-            for t in sorted(times, key=nkey):
-                if times[t] > args.max_task_min + 1e-9:
-                    issues.append(f"{t}: predicted {times[t]:.1f} min is over the {args.max_task_min:.0f}-min cap; split it along its components")
-            for m in mergeable_tasks(plan, graph, times, args):
-                to = f"merge with {m['merge_with']}" if m["merge_with"] else "no safe merge partner"
-                issues.append(f"{m['task']} is mergeable ({'; '.join(m['reasons'])}); {to}")
-            rep = schedule_report(plan, args)
-            if rep["target_min"] is not None and not rep["target_met"]:
-                miss = (f"MISSED TARGET: predicted {rep['total_min']:.1f} min vs target {rep['target_min']:.1f} min "
-                        f"— critical path {' → '.join(rep['critical_path'])}")
-    if miss:
-        warnings.append(miss)
+    miss: str | None = None  # O(1)
+    if graph is not None and not find_cycle(graph):  # O(n+e) redundant, parse_taskgraph already checked
+        try:  # O(1)
+            times, _ = effective_times(plan, graph, args)  # O(n*p) recomputed in schedule_report
+        except PlanError as exc:  # O(1)
+            issues.append(str(exc))  # O(1)
+            times = None  # O(1)
+        if times is not None:  # O(1)
+            for t in sorted(times, key=nkey):  # O(n log n)
+                if times[t] > args.max_task_min + 1e-9:  # O(1)
+                    issues.append(f"{t}: predicted {times[t]:.1f} min is over the {args.max_task_min:.0f}-min cap; split it along its components")  # O(1)
+            for m in mergeable_tasks(plan, graph, times, args):  # O(n*p + n*(n+e) + n^2*k*s)
+                to = f"merge with {m['merge_with']}" if m["merge_with"] else "no safe merge partner"  # O(1)
+                issues.append(f"{m['task']} is mergeable ({'; '.join(m['reasons'])}); {to}")  # O(1)
+            rep = schedule_report(plan, args)  # O(n*(n+e) + n*p) re-parses graph and times
+            if rep["target_min"] is not None and not rep["target_met"]:  # O(1)
+                miss = (f"MISSED TARGET: predicted {rep['total_min']:.1f} min vs target {rep['target_min']:.1f} min "  # O(1)
+                        f"— critical path {' → '.join(rep['critical_path'])}")  # O(1)
+    if miss:  # O(1)
+        warnings.append(miss)  # O(1)
 
     # SPEC coverage
-    if getattr(args, "spec", None):
-        sp = Path(args.spec)
-        if not sp.is_file():
-            issues.append(f"spec not found: {args.spec}")
-        else:
-            stext = sp.read_text(encoding="utf-8-sig").replace("\r\n", "\n")
-            sflags, _ = scan_fences(stext.split("\n"))
-            plan_l = plan.text.lower()
-            for ln, fenced in zip(stext.split("\n"), sflags):
-                m = None if fenced else re.match(r"^#{2,3}\s+(.*?)\s*#*$", ln)
-                if not m:
-                    continue
-                raw = m.group(1)
-                nm = re.match(r"^(?:§\s*)?(\d+(?:\.\d+)*)\.?\s+(.*)$", raw)
-                num, title = (nm.group(1), nm.group(2)) if nm else (None, raw)
-                title = title.strip().strip("`")
-                if title.lower() in SPEC_SKIP:
-                    continue
-                covered = title.lower() in plan_l
-                if not covered and num:
-                    covered = bool(re.search(rf"(?:§|section\s+|sec\.\s*)\s*{re.escape(num)}\b", plan_l))
-                if not covered:
-                    issues.append(f"SPEC section {raw!r} has no task")
-    return issues, warnings
+    if getattr(args, "spec", None):  # O(1)
+        sp = Path(args.spec)  # O(1)
+        if not sp.is_file():  # O(1)
+            issues.append(f"spec not found: {args.spec}")  # O(1)
+        else:  # O(1)
+            stext = sp.read_text(encoding="utf-8-sig").replace("\r\n", "\n")  # O(S) file read
+            sflags, _ = scan_fences(stext.split("\n"))  # O(S)
+            plan_l = plan.text.lower()  # O(C)
+            for ln, fenced in zip(stext.split("\n"), sflags):  # O(S) iterations; split repeated
+                m = None if fenced else re.match(r"^#{2,3}\s+(.*?)\s*#*$", ln)  # O(s)
+                if not m:  # O(1)
+                    continue  # O(1)
+                raw = m.group(1)  # O(1)
+                nm = re.match(r"^(?:§\s*)?(\d+(?:\.\d+)*)\.?\s+(.*)$", raw)  # O(s)
+                num, title = (nm.group(1), nm.group(2)) if nm else (None, raw)  # O(1)
+                title = title.strip().strip("`")  # O(1)
+                if title.lower() in SPEC_SKIP:  # O(1)
+                    continue  # O(1)
+                covered = title.lower() in plan_l  # O(C) substring search
+                if not covered and num:  # O(1)
+                    covered = bool(re.search(rf"(?:§|section\s+|sec\.\s*)\s*{re.escape(num)}\b", plan_l))  # O(C) regex
+                if not covered:  # O(1)
+                    issues.append(f"SPEC section {raw!r} has no task")  # O(1)
+    return issues, warnings  # O(1)
 
 
-def cmd_lint(args) -> int:
-    plan = Plan.load(args.plan)
-    issues, warnings = lint_plan(plan, args)
-    for w in warnings:
-        print(w)
-    for i in issues:
-        print(f"ISSUE: {i}")
-    if issues:
-        print(f"lint: {len(issues)} issue(s)")
-        return 1
-    print("lint: ok")
-    return 0
+def cmd_lint(args) -> int:  # O(lint) total
+    plan = Plan.load(args.plan)  # O(C+L)
+    issues, warnings = lint_plan(plan, args)  # O(lint)
+    for w in warnings:  # O(w) iterations
+        print(w)  # O(1)
+    for i in issues:  # O(issues) iterations
+        print(f"ISSUE: {i}")  # O(1)
+    if issues:  # O(1)
+        print(f"lint: {len(issues)} issue(s)")  # O(1)
+        return 1  # O(1)
+    print("lint: ok")  # O(1)
+    return 0  # O(1)
 
 
 # --------------------------------------------------------------------------
 # CLI
 # --------------------------------------------------------------------------
 
-def add_predictor_args(p):
-    p.add_argument("--models", help="models.json (default: config/models.json)")
-    p.add_argument("--coef", help="predictor.json (default: config/predictor.json)")
-    p.add_argument("--stated", action="store_true",
-                   help="use stated Est. time lines even where features exist (default: features win)")
+def add_predictor_args(p):  # O(1)
+    p.add_argument("--models", help="models.json (default: config/models.json)")  # O(1)
+    p.add_argument("--coef", help="predictor.json (default: config/predictor.json)")  # O(1)
+    p.add_argument("--stated", action="store_true",  # O(1)
+                   help="use stated Est. time lines even where features exist (default: features win)")  # O(1)
 
 
-def build_parser():
-    ap = argparse.ArgumentParser(prog="plan_tools.py", description=__doc__.splitlines()[0])
-    sub = ap.add_subparsers(dest="cmd", required=True)
+def build_parser():  # O(1) total
+    ap = argparse.ArgumentParser(prog="plan_tools.py", description=__doc__.splitlines()[0])  # O(1)
+    sub = ap.add_subparsers(dest="cmd", required=True)  # O(1)
 
-    p = sub.add_parser("taskgraph", help="print task -> dependencies JSON; seams and mergeable warnings on stderr")
-    p.add_argument("--plan", required=True)
-    p.add_argument("--format", choices=("graph", "full"), default="graph",
-                   help="full: {graph, seams, mergeable} on stdout")
-    add_predictor_args(p)
-    p.set_defaults(func=cmd_taskgraph)
+    p = sub.add_parser("taskgraph", help="print task -> dependencies JSON; seams and mergeable warnings on stderr")  # O(1)
+    p.add_argument("--plan", required=True)  # O(1)
+    p.add_argument("--format", choices=("graph", "full"), default="graph",  # O(1)
+                   help="full: {graph, seams, mergeable} on stdout")  # O(1)
+    add_predictor_args(p)  # O(1)
+    p.set_defaults(func=cmd_taskgraph)  # O(1)
 
-    p = sub.add_parser("stubs", help="write interface stubs from Produces lines")
-    p.add_argument("--plan", required=True)
-    p.add_argument("--root", default=".")
-    p.add_argument("--dry-run", action="store_true")
-    p.set_defaults(func=cmd_stubs)
+    p = sub.add_parser("stubs", help="write interface stubs from Produces lines")  # O(1)
+    p.add_argument("--plan", required=True)  # O(1)
+    p.add_argument("--root", default=".")  # O(1)
+    p.add_argument("--dry-run", action="store_true")  # O(1)
+    p.set_defaults(func=cmd_stubs)  # O(1)
 
-    p = sub.add_parser("schedule", help="simulate the ready queue; optionally insert a Gantt into the plan")
-    p.add_argument("--plan", required=True)
-    p.add_argument("--cap", type=int, default=DEFAULT_CAP)
-    p.add_argument("--target-min", type=float, default=None)
-    p.add_argument("--tail-min", type=float, default=None, help="minutes after the build (default from predictor.json)")
-    p.add_argument("--insert", action="store_true")
-    p.add_argument("--json", action="store_true")
-    add_predictor_args(p)
-    p.set_defaults(func=cmd_schedule)
+    p = sub.add_parser("schedule", help="simulate the ready queue; optionally insert a Gantt into the plan")  # O(1)
+    p.add_argument("--plan", required=True)  # O(1)
+    p.add_argument("--cap", type=int, default=DEFAULT_CAP)  # O(1)
+    p.add_argument("--target-min", type=float, default=None)  # O(1)
+    p.add_argument("--tail-min", type=float, default=None, help="minutes after the build (default from predictor.json)")  # O(1)
+    p.add_argument("--insert", action="store_true")  # O(1)
+    p.add_argument("--json", action="store_true")  # O(1)
+    add_predictor_args(p)  # O(1)
+    p.set_defaults(func=cmd_schedule)  # O(1)
 
-    p = sub.add_parser("lint", help="check the plan; MISSED TARGET is a warning (exit 0)")
-    p.add_argument("--plan", required=True)
-    p.add_argument("--spec")
-    p.add_argument("--cap", type=int, default=DEFAULT_CAP)
-    p.add_argument("--target-min", type=float, default=None)
-    p.add_argument("--tail-min", type=float, default=None)
-    p.add_argument("--max-task-min", type=float, default=DEFAULT_MAX_TASK_MIN)
-    p.add_argument("--max-chars", type=int, default=DEFAULT_MAX_CHARS)
-    add_predictor_args(p)
-    p.set_defaults(func=cmd_lint)
+    p = sub.add_parser("lint", help="check the plan; MISSED TARGET is a warning (exit 0)")  # O(1)
+    p.add_argument("--plan", required=True)  # O(1)
+    p.add_argument("--spec")  # O(1)
+    p.add_argument("--cap", type=int, default=DEFAULT_CAP)  # O(1)
+    p.add_argument("--target-min", type=float, default=None)  # O(1)
+    p.add_argument("--tail-min", type=float, default=None)  # O(1)
+    p.add_argument("--max-task-min", type=float, default=DEFAULT_MAX_TASK_MIN)  # O(1)
+    p.add_argument("--max-chars", type=int, default=DEFAULT_MAX_CHARS)  # O(1)
+    add_predictor_args(p)  # O(1)
+    p.set_defaults(func=cmd_lint)  # O(1)
 
-    for name in REVIEW_COMMANDS:
-        sub.add_parser(name, help="implemented in pt_review.py")
-    return ap
-
-
-def _utf8_streams():
-    for s in (sys.stdout, sys.stderr):
-        if hasattr(s, "reconfigure"):
-            try:
-                s.reconfigure(encoding="utf-8")
-            except Exception:  # noqa: BLE001
-                pass
+    for name in REVIEW_COMMANDS:  # O(1)
+        sub.add_parser(name, help="implemented in pt_review.py")  # O(1)
+    return ap  # O(1)
 
 
-def main(argv=None):
-    """Dispatch. adapter/packet/contract go to pt_review.main(argv) with the subcommand name kept in argv."""
-    argv = list(sys.argv[1:] if argv is None else argv)
-    _utf8_streams()
-    if argv and argv[0] in REVIEW_COMMANDS:
+def _utf8_streams():  # O(1)
+    for s in (sys.stdout, sys.stderr):  # O(1)
+        if hasattr(s, "reconfigure"):  # O(1)
+            try:  # O(1)
+                s.reconfigure(encoding="utf-8")  # O(1)
+            except Exception:  # noqa: BLE001 | O(1)
+                pass  # O(1)
+
+
+def main(argv=None):  # O(1) + dispatch
+    """Dispatch. adapter/packet/contract go to pt_review.main(argv) with the subcommand name kept in argv."""  # O(1)
+    argv = list(sys.argv[1:] if argv is None else argv)  # O(1)
+    _utf8_streams()  # O(1)
+    if argv and argv[0] in REVIEW_COMMANDS:  # O(1)
         # pt_review.main receives the FULL argv, including the subcommand name as argv[0].
-        if str(SCRIPT_DIR) not in sys.path:
-            sys.path.insert(0, str(SCRIPT_DIR))
-        import pt_review
-        return pt_review.main(argv)
-    args = build_parser().parse_args(argv)
-    try:
-        return args.func(args)
-    except PlanError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return exc.code
+        if str(SCRIPT_DIR) not in sys.path:  # O(1)
+            sys.path.insert(0, str(SCRIPT_DIR))  # O(1)
+        import pt_review  # O(1)
+        return pt_review.main(argv)  # O(1)
+    args = build_parser().parse_args(argv)  # O(1)
+    try:  # O(1)
+        return args.func(args)  # O(1)
+    except PlanError as exc:  # O(1)
+        print(f"error: {exc}", file=sys.stderr)  # O(1)
+        return exc.code  # O(1)
 
 
-if __name__ == "__main__":
-    sys.exit(main())
+if __name__ == "__main__":  # O(1)
+    sys.exit(main())  # O(1)

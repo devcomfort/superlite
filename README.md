@@ -33,16 +33,17 @@ Agents (`agents/`):
 
 ### Tools
 
-Mechanical steps are scripts, not agents. Every tool runs as `bash <skill-dir>/scripts/sl <tool> ...`, where `<skill-dir>` is `skills/subagent-driven-development`. The `sl` launcher runs a `.sh` tool under bash and a `.py` tool under the first working Python, and exits 3 when there is none.
+Mechanical steps are scripts, not agents. Every tool runs as `bash <skill-dir>/scripts/sl <tool> ...`, where `<skill-dir>` is `skills/subagent-driven-development`. The `sl` launcher runs a `.sh` tool under bash and a `.py` tool under the first working Python, and exits 3 when there is none. It caches that interpreter, so each later call is one Python start (`SUPERLITE_PYTHON` skips the probe entirely). Tools that need each other import them in process instead of spawning `sl` again.
 
 | Tool | What it does |
 |---|---|
 | `plan_tools` | Lints the plan, checks its task graph and sizes |
 | `predict` | Predicts each task's context and time |
 | `build_prime` | Builds the shared prime that every agent reads first |
+| `dispatch` | Ready tasks and who runs each, in one call (`next_tasks` + `assign`) |
 | `next_tasks` | Computes which tasks are ready |
 | `assign` | Scores idle agents and picks the most relevant one |
-| `commit_task` | Checks scope and commits a task's owned files |
+| `commit_task` | Checks scope and commits one or more tasks' owned files; `--dispatch` also prints the next dispatch |
 | `run_tests` | Runs the tests (replaces the old test-runner agent) |
 | `pt_review` | Decides which tasks get their own review and which are batched per package |
 | `incident` | Records and queries the shared incident log (file, line, context) |

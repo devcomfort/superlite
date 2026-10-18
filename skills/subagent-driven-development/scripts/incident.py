@@ -47,36 +47,54 @@ def _die(msg):  # O(1)
     sys.exit(2)  # O(1)
 
 
-def cmd_add(a):  # O(c) + file append O(c) + fsync
-    if a.line < 0:  # O(1)
-        _die("line must be >= 0")  # O(1)
-    if a.kind is not None and a.kind not in KINDS:  # O(1)
-        _die(f"kind must be one of: {', '.join(KINDS)}")  # O(1)
-    if a.confidence is not None and a.confidence not in CONFIDENCE:  # O(1)
-        _die(f"confidence must be one of: {', '.join(CONFIDENCE)}")  # O(1)
-    if not a.file or not a.context:  # O(1)
-        _die("file and context are required")  # O(1)
-    ctx = a.context  # O(1)
+def make_entry(file, line, context, agent=None, kind=None, resolution=None,  # O(c)
+               confidence=None):
+    """One validated log entry; ValueError on bad input."""
+    if line < 0:  # O(1)
+        raise ValueError("line must be >= 0")  # O(1)
+    if kind is not None and kind not in KINDS:  # O(1)
+        raise ValueError(f"kind must be one of: {', '.join(KINDS)}")  # O(1)
+    if confidence is not None and confidence not in CONFIDENCE:  # O(1)
+        raise ValueError(f"confidence must be one of: {', '.join(CONFIDENCE)}")  # O(1)
+    if not file or not context:  # O(1)
+        raise ValueError("file and context are required")  # O(1)
+    ctx = context  # O(1)
     if len(ctx) > MAX_CONTEXT:  # O(1)
         ctx = ctx[:MAX_CONTEXT - 1] + "…"  # O(c)
-    entry = {"file": a.file, "line": a.line, "context": ctx}  # O(c)
-    for key in ("agent", "kind", "resolution", "confidence"):  # O(1)
-        val = getattr(a, key)  # O(1)
+    entry = {"file": file, "line": int(line), "context": ctx}  # O(c)
+    for key, val in (("agent", agent), ("kind", kind), ("resolution", resolution),  # O(1) iterations (4)
+                     ("confidence", confidence)):
         if val is not None:  # O(1)
             entry[key] = val  # O(1)
     entry["time"] = time.strftime("%H:%M:%S")  # O(1)
-    data = (json.dumps(entry, ensure_ascii=False) + "\n").encode("utf-8")  # O(c)
-    path = Path(a.log)  # O(1)
+    return entry  # O(1)
+
+
+def append(log, entries):  # O(total c) + one open, lock and fsync for the whole batch
+    """Append entries (dicts from make_entry) under one lock: one open and one fsync."""
+    if not entries:  # O(1)
+        return  # O(1)
+    data = "".join(json.dumps(e, ensure_ascii=False) + "\n" for e in entries).encode("utf-8")  # O(total c)
+    path = Path(log)  # O(1)
     path.parent.mkdir(parents=True, exist_ok=True)  # O(1)
     with open(path, "ab+") as f:  # O(1)
         _lock(f)  # O(1)
         try:  # O(1)
             f.seek(0, os.SEEK_END)  # O(1)
-            f.write(data)  # O(c) append
+            f.write(data)  # O(total c) append
             f.flush()  # O(1)
-            os.fsync(f.fileno())  # O(c) I/O flush
+            os.fsync(f.fileno())  # O(total c) I/O flush
         finally:  # O(1)
             _unlock(f)  # O(1)
+
+
+def cmd_add(a):  # O(c) + file append O(c) + fsync
+    try:  # O(1)
+        entry = make_entry(a.file, a.line, a.context, a.agent, a.kind, a.resolution,  # O(c)
+                           a.confidence)
+    except ValueError as e:  # O(1)
+        _die(str(e))  # O(1)
+    append(a.log, [entry])  # O(c) + fsync
     return 0  # O(1)
 
 

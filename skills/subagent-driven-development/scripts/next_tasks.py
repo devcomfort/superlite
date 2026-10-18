@@ -48,28 +48,84 @@ def run_tool(tool, *args):  # O(output) + process spawn
                           encoding="utf-8", errors="replace", env=env)  # O(1)
 
 
-def taskgraph(plan):  # O(n + e) + process spawn
-    """Task -> dependencies, from `plan_tools taskgraph` (through sl)."""
-    r = run_tool("plan_tools", "taskgraph", "--plan", plan)  # O(output) + process spawn
-    if r.returncode != 0:  # O(1)
-        die(f"taskgraph failed: {(r.stderr or r.stdout).strip()}", r.returncode)  # O(1)
-    try:  # O(1)
-        graph = json.loads(r.stdout)  # O(output) parse
-    except json.JSONDecodeError as e:  # O(1)
-        die(f"taskgraph printed invalid JSON: {e}")  # O(1)
-    return {k: list(v) for k, v in graph.items()}  # O(n + e)
+def in_process():  # O(1)
+    """Sibling tools run inside this process (no spawn) unless SUPERLITE_SL swaps the
+    launcher, which tests use to put fakes in their place."""
+    return not os.environ.get("SUPERLITE_SL")  # O(1)
 
 
-def add_incident(log, file, line, context, kind, agent, resolution=None):  # O(1) + process spawn
-    """Log one incident through `sl incident add`; failures only warn."""
-    cmd = ["add", "--file", file, "--line", line, "--context", context,  # O(1)
-           "--agent", agent, "--kind", kind, "--log", log]  # O(1)
-    if resolution:  # O(1)
-        cmd += ["--resolution", resolution]  # O(1)
-    r = run_tool("incident", *cmd)  # O(output) + process spawn
-    if r.returncode != 0:  # O(1)
-        print(f"warning: incident not logged: {(r.stderr or r.stdout).strip()}",  # O(1)
-              file=sys.stderr)  # O(1)
+def sibling(name):  # O(1) after the first import
+    """Import a sibling tool module (plan_tools, incident) from this directory."""
+    if str(SCRIPTS) not in sys.path:  # O(len sys.path)
+        sys.path.insert(0, str(SCRIPTS))  # O(len sys.path)
+    return __import__(name)  # O(1) cached after first import
+
+
+_GRAPHS = {}  # resolved plan path -> {"graph", "seams"}; one parse per process | O(1)
+
+
+def taskgraph_full(plan):  # O(L + n + e) once per plan per process; O(1) after
+    """{"graph": task -> dependencies, "seams": ["Ta↔Tb", ...]} for the plan.
+
+    In process: plan_tools.parse_taskgraph, parsed once and memoized. With SUPERLITE_SL:
+    `sl plan_tools taskgraph --format full`."""
+    key = str(Path(plan).resolve())  # O(len)
+    if key in _GRAPHS:  # O(1) hashmap
+        return _GRAPHS[key]  # O(1)
+    if in_process():  # O(1)
+        pt = sibling("plan_tools")  # O(1)
+        try:  # O(1)
+            graph = pt.parse_taskgraph(pt.Plan.load(str(plan)))  # O(L + n + e)
+        except pt.PlanError as e:  # O(1)
+            die(f"taskgraph failed: error: {e}", e.code)  # O(1)
+        data = {"graph": graph, "seams": pt.seams_of(graph)}  # O(e)
+    else:  # O(1)
+        r = run_tool("plan_tools", "taskgraph", "--plan", plan, "--format", "full")  # O(output) + process spawn
+        if r.returncode != 0:  # O(1)
+            die(f"taskgraph failed: {(r.stderr or r.stdout).strip()}", r.returncode)  # O(1)
+        try:  # O(1)
+            data = json.loads(r.stdout)  # O(output) parse
+        except json.JSONDecodeError as e:  # O(1)
+            die(f"taskgraph printed invalid JSON: {e}")  # O(1)
+    data = {"graph": {k: list(v) for k, v in (data.get("graph") or {}).items()},  # O(n + e)
+            "seams": list(data.get("seams") or [])}  # O(e)
+    _GRAPHS[key] = data  # O(1)
+    return data  # O(1)
+
+
+def taskgraph(plan):  # O(n + e) (memoized parse, see taskgraph_full)
+    """Task -> dependencies."""
+    return {k: list(v) for k, v in taskgraph_full(plan)["graph"].items()}  # O(n + e)
+
+
+def add_incidents(log, items):  # O(total context) + one append; or one spawn per item with SUPERLITE_SL
+    """Log incidents; items are (file, line, context, kind, agent, resolution). In process
+    they go through incident.append in one locked write; failures only warn."""
+    if not items:  # O(1)
+        return  # O(1)
+    if in_process():  # O(1)
+        inc = sibling("incident")  # O(1)
+        try:  # O(1)
+            inc.append(log, [inc.make_entry(str(f), int(ln), ctx, agent=ag, kind=k,  # O(total context)
+                                            resolution=res or None)
+                             for f, ln, ctx, k, ag, res in items])
+        except (ValueError, OSError) as e:  # O(1)
+            print(f"warning: incident not logged: {e}", file=sys.stderr)  # O(1)
+        return  # O(1)
+    for file, line, context, kind, agent, resolution in items:  # O(k) iterations
+        cmd = ["add", "--file", file, "--line", line, "--context", context,  # O(1)
+               "--agent", agent, "--kind", kind, "--log", log]  # O(1)
+        if resolution:  # O(1)
+            cmd += ["--resolution", resolution]  # O(1)
+        r = run_tool("incident", *cmd)  # O(output) + process spawn
+        if r.returncode != 0:  # O(1)
+            print(f"warning: incident not logged: {(r.stderr or r.stdout).strip()}",  # O(1)
+                  file=sys.stderr)  # O(1)
+
+
+def add_incident(log, file, line, context, kind, agent, resolution=None):  # O(context) + one append
+    """Log one incident; failures only warn."""
+    add_incidents(log, [(file, line, context, kind, agent, resolution)])  # O(context)
 
 
 def read_text(path):  # O(L)
