@@ -11,8 +11,10 @@ stdout, one line per ready task, longest predicted first, within the cap:
 stderr: `evict=<id> <reason>` for each idle agent eligible for none of the ready tasks.
 
 Defaults when a flag is omitted: committed tasks come from the ledger's `- commit Tn <sha>`
-lines; running tasks are the `current` task of each busy pool agent. One idle agent is
-never given two tasks in the same call. The plan is parsed once, in this process. Stdlib only.
+lines; running tasks are the pool agents' `current` tasks not yet committed (busy or not:
+a FAILED or BLOCKED task keeps its `current` until commit_task commits it). An agent with
+a `current` gets no new task, and no agent appears on two lines of one call (`agent=` or
+`poll`). The plan is parsed once, in this process. Stdlib only.
 """
 
 # Complexity notation:
@@ -34,9 +36,14 @@ def load_pool(path):  # O(pool bytes)
     return json.loads(p.read_text(encoding="utf-8")) if p.exists() else {"agents": []}  # O(pool bytes)
 
 
-def running_from_pool(pool):  # O(a)
+def running_from_pool(pool, committed=()):  # O(a)
+    done = set(committed)  # O(c)
     return [ag["current"] for ag in pool.get("agents", [])  # O(a)
-            if (ag.get("busy") or ag.get("status") == "busy") and ag.get("current")]
+            if ag.get("current") and ag["current"] not in done]
+
+
+def is_idle(ag):  # O(1)
+    return not (ag.get("busy") or ag.get("status") == "busy" or ag.get("current"))  # O(1)
 
 
 def plan_dispatch(plan, pool, committed, running, cap):  # O(L + n + e + R*a*(F + o))
@@ -46,33 +53,41 @@ def plan_dispatch(plan, pool, committed, running, cap):  # O(L + n + e + R*a*(F 
     times = {t: (info[t]["est_time"] if t in info and info[t]["est_time"] is not None  # O(n)
                  else nt.DEFAULT_TIME) for t in graph}
     ready = nt.ready_tasks(graph, times, committed, running, cap)  # O(n + e + R log R)
-    idle = [ag for ag in pool.get("agents", [])  # O(a)
-            if not (ag.get("busy") or ag.get("status") == "busy")]
-    taken = set()  # agents claimed by an earlier line of this call | O(1)
+    idle = [ag for ag in pool.get("agents", []) if is_idle(ag)]  # O(a)
+    eligible = {}  # task -> {agent id: score} over every eligible idle agent | O(1)
     eligible_somewhere = set()  # O(1)
     reasons = {}  # O(1)
-    out = []  # O(1)
     for t in ready:  # O(R) iterations
         task = info.get(t, {})  # O(1)
         deps = graph.get(t, [])  # O(1)
         owns = task.get("owns", [])  # O(1)
         est_context = task.get("est_context") or asg.DEFAULT_CONTEXT_K  # O(1)
-        scores = {}  # O(1)
+        eligible[t] = {}  # O(1)
         for ag in idle:  # O(a) iterations
             why = asg.eligibility(ag, est_context)  # O(1)
             if why:  # O(1)
                 reasons.setdefault(ag["id"], why)  # O(1)
                 continue  # O(1)
             eligible_somewhere.add(ag["id"])  # O(1)
-            if ag["id"] in taken:  # O(1)
-                continue  # O(1)
-            scores[ag["id"]] = asg.score(ag, t, deps, owns, info)  # O(F + o*F)
+            eligible[t][ag["id"]] = asg.score(ag, t, deps, owns, info)  # O(F + o*F)
+
+    def rank(t):  # resolve signal first: clear winners, then polls with signal, then none | O(a log a)
+        d, top = asg.decide(eligible[t]), max(eligible[t].values(), default=0)  # O(a log a)
+        return 0 if d.startswith("agent=") else (1 if top > 0 else 2)  # O(1)
+
+    order = {t: i for i, t in enumerate(ready)}  # O(R)
+    taken = set()  # agents on an earlier resolved line (agent= or poll) | O(1)
+    decided = {}  # O(1)
+    for t in sorted(ready, key=lambda x: (rank(x), order[x])):  # O(R log R + R*a log a)
+        scores = {k: v for k, v in eligible[t].items() if k not in taken}  # O(a)
         decision = asg.decide(scores)  # O(a log a)
         if decision.startswith("agent="):  # O(1)
             taken.add(decision.split("=", 1)[1])  # O(1)
-        elif decision == "poll":  # O(1)
+        elif decision == "poll":  # polled agents are reserved too: a poll winner has one task | O(1)
+            taken.update(scores)  # O(a)
             decision = "poll " + ",".join(scores)  # O(a)
-        out.append((t, decision))  # O(1)
+        decided[t] = decision  # O(1)
+    out = [(t, decided[t]) for t in ready]  # O(R) lines stay longest first
     evict = {k: v for k, v in reasons.items() if k not in eligible_somewhere}  # O(a)
     return out, evict  # O(1)
 
@@ -88,7 +103,7 @@ def run(plan, pool_path, ledger, committed=None, running=None, cap=10):  # O(c +
     """Library entry for commit_task --dispatch; flags left as None take their defaults."""
     pool = load_pool(pool_path)  # O(pool bytes)
     done = nt.csv(committed) if committed is not None else sorted(ct.committed_tasks(ledger))  # O(c)
-    busy = nt.csv(running) if running is not None else running_from_pool(pool)  # O(a)
+    busy = nt.csv(running) if running is not None else running_from_pool(pool, done)  # O(a)
     return plan_dispatch(plan, pool, done, busy, cap)  # see plan_dispatch
 
 

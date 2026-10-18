@@ -1,29 +1,31 @@
 #!/usr/bin/env bash
+# Complexity notation:
+#   n = bytes of the hook's stdin JSON, m = bytes of the command string inside it
 # PreToolUse hook (Bash, PowerShell): block commands that kill processes by name or
 # pattern (taskkill /IM or /FI, pkill, killall, Stop-Process -Name, Get-Process | Stop-Process, kill -9 -1). Killing by PID
 # is allowed. Pure bash + grep, so it needs no Python and adds only milliseconds.
 # Exit 2 blocks the command (message on stderr); anything else, including malformed
 # input, exits 0 with no output (fail open).
 
-input="$(cat)"
+input="$(cat)"  # O(n)
 
-printf '%s' "$input" | grep -Eq '"tool_name"[[:space:]]*:[[:space:]]*"(Bash|PowerShell)"' || exit 0
+printf '%s' "$input" | grep -Eq '"tool_name"[[:space:]]*:[[:space:]]*"(Bash|PowerShell)"' || exit 0  # O(n) + process spawn (grep)
 
 # The command string, still JSON-escaped; the patterns below survive the escaping.
-cmd="$(printf '%s' "$input" | sed -n 's/.*"command"[[:space:]]*:[[:space:]]*"\(\([^"\\]\|\\.\)*\)".*/\1/p' | head -n 1)"
-[ -n "$cmd" ] || exit 0
+cmd="$(printf '%s' "$input" | sed -n 's/.*"command"[[:space:]]*:[[:space:]]*"\(\([^"\\]\|\\.\)*\)".*/\1/p' | head -n 1)"  # O(n) + process spawns (sed, head)
+[ -n "$cmd" ] || exit 0  # O(1)
 
 # Literal \n \r \t escapes (still JSON-escaped) become spaces, so multi-line commands match.
-cmd="$(printf '%s' "$cmd" | sed 's/\\[nrt]/ /g')"
+cmd="$(printf '%s' "$cmd" | sed 's/\\[nrt]/ /g')"  # O(m) + process spawns (printf, sed)
 
-w='[^[:alnum:]_]'
+w='[^[:alnum:]_]'  # O(1)
 # Get-Process ... | Stop-Process (no -Id after Stop-Process) kills by name.
-gp_pipe=0
-if printf '%s' "$cmd" | grep -Eiq "(^|$w)get-process($w.*)?\|[[:space:]]*stop-process"    && ! printf '%s' "$cmd" | grep -Eiq "stop-process[^|;]*[[:space:]]-id($w|\$)"; then
-  gp_pipe=1
-fi
-if [ "$gp_pipe" = 1 ] || printf '%s' "$cmd" | grep -Eiq "(^|$w)taskkill($w.*)?[[:space:]]//?fi($w|\$)|(^|$w)kill[[:space:]]+(-s[[:space:]]+(kill|9)|-(kill|sigkill|9))[[:space:]]+-1([^0-9]|\$)|(^|$w)taskkill($w.*)?[[:space:]]//?im($w|\$)|(^|$w)(pkill|killall)($w|\$)|(^|$w)stop-process($w.*)?[[:space:]]-name($w|\$)|(^|$w)kill[[:space:]]+-9[[:space:]]+-1([^0-9]|\$)"; then
-  echo "Blocked: this command kills processes by name or pattern, which can stop other sessions' processes. Kill only the PIDs you started (kill <PID>, taskkill /PID <PID>, Stop-Process -Id <PID>)." >&2
-  exit 2
-fi
-exit 0
+gp_pipe=0  # O(1)
+if printf '%s' "$cmd" | grep -Eiq "(^|$w)get-process($w.*)?\|[[:space:]]*stop-process"    && ! printf '%s' "$cmd" | grep -Eiq "stop-process[^|;]*[[:space:]]-id($w|\$)"; then  # O(m) + up to 2 process spawns (grep)
+  gp_pipe=1  # O(1)
+fi  # O(1)
+if [ "$gp_pipe" = 1 ] || printf '%s' "$cmd" | grep -Eiq "(^|$w)taskkill($w.*)?[[:space:]]//?fi($w|\$)|(^|$w)kill[[:space:]]+(-s[[:space:]]+(kill|9)|-(kill|sigkill|9))[[:space:]]+-1([^0-9]|\$)|(^|$w)taskkill($w.*)?[[:space:]]//?im($w|\$)|(^|$w)(pkill|killall)($w|\$)|(^|$w)stop-process($w.*)?[[:space:]]-name($w|\$)|(^|$w)kill[[:space:]]+-9[[:space:]]+-1([^0-9]|\$)"; then  # O(m) + process spawn (grep)
+  echo "Blocked: this command kills processes by name or pattern, which can stop other sessions' processes. Kill only the PIDs you started (kill <PID>, taskkill /PID <PID>, Stop-Process -Id <PID>)." >&2  # O(1)
+  exit 2  # O(1)
+fi  # O(1)
+exit 0  # O(1)

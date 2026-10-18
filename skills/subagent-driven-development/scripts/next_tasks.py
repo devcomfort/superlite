@@ -105,12 +105,17 @@ def add_incidents(log, items):  # O(total context) + one append; or one spawn pe
         return  # O(1)
     if in_process():  # O(1)
         inc = sibling("incident")  # O(1)
+        entries = []  # O(1)
+        for f, ln, ctx, k, ag, res in items:  # O(k) iterations; a bad item is skipped, not the batch
+            try:  # O(1)
+                entries.append(inc.make_entry(str(f), int(ln), ctx, agent=ag, kind=k,  # O(context)
+                                              resolution=res or None))
+            except (ValueError, TypeError) as e:  # O(1)
+                print(f"warning: incident not logged ({f}:{ln}): {e}", file=sys.stderr)  # O(1)
         try:  # O(1)
-            inc.append(log, [inc.make_entry(str(f), int(ln), ctx, agent=ag, kind=k,  # O(total context)
-                                            resolution=res or None)
-                             for f, ln, ctx, k, ag, res in items])
-        except (ValueError, OSError) as e:  # O(1)
-            print(f"warning: incident not logged: {e}", file=sys.stderr)  # O(1)
+            inc.append(log, entries)  # O(total context) one locked write
+        except OSError as e:  # O(1)
+            print(f"warning: incidents not logged: {e}", file=sys.stderr)  # O(1)
         return  # O(1)
     for file, line, context, kind, agent, resolution in items:  # O(k) iterations
         cmd = ["add", "--file", file, "--line", line, "--context", context,  # O(1)

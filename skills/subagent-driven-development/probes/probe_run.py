@@ -868,15 +868,15 @@ def _log_incidents(log: Path, jobs: list[tuple]) -> None:  # O(j + bytes) total,
     if not jobs:  # O(1)
         return  # O(1)
     try:  # O(1)
-        scripts = str(INCIDENT_SL.parent)  # O(1)
-        if scripts not in sys.path:  # O(len sys.path)
-            sys.path.insert(0, scripts)  # O(1)
-        import incident  # O(module size) first import only
+        spec = importlib.util.spec_from_file_location(  # O(1) by path, under a private name:
+            "_superlite_incident", INCIDENT_SL.parent / "incident.py")  # no sys.path change, no clash
+        incident = importlib.util.module_from_spec(spec)  # O(1)
+        spec.loader.exec_module(incident)  # O(module size)
         incident.append(str(log), [incident.make_entry(f, line, ctx, agent="probe_run", kind=kind,  # O(j + bytes) one locked append
                                                        resolution=res)  # O(1)
                                    for f, line, ctx, kind, res in jobs])  # O(j) iterations
         return  # O(1)
-    except (ImportError, ValueError, OSError):  # O(1)
+    except Exception:  # missing or broken incident module, a rejected entry, I/O | O(1)
         pass  # O(1)
     for f, line, ctx, kind, res in jobs:  # O(j) iterations (fallback only)
         ctx = ctx if len(ctx) <= 200 else ctx[:199] + "…"  # O(len ctx)

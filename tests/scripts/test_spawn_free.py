@@ -215,3 +215,104 @@ def test_sl_trusts_superlite_python(tmp_path):
                         str(tmp_path / "i.jsonl")], capture_output=True, text=True, env=env)
     assert r.returncode == 0, r.stderr
     assert not (tmp_path / "cache" / "python").exists()  # no probe, nothing cached
+
+
+# ------------------------------------------------------------- review fixes
+
+def test_dispatch_keeps_failed_task_running_and_its_agent_off_the_list(tmp_path):
+    # a1 reported T2 FAILED: busy is false, but `current` stays until T2 is committed
+    a1 = {"id": "a1", "tasks": [], "files": ["src/b.py"], "current": "T2"}
+    a2 = {"id": "a2", "tasks": [], "files": ["pkg/f.py"]}
+    lines, _ = dispatch(tmp_path, [a1, a2])
+    d = dict(lines)
+    assert "T2" not in d  # still running, not re-dispatched
+    assert d["T5"] == "agent=a2"
+    assert all("a1" not in v for v in d.values())
+
+
+def test_dispatch_reserves_polled_agents(tmp_path):
+    # T2 (longest) ties b1/b2 on the package point and polls both; T5 must not reuse them
+    b1 = {"id": "b1", "tasks": [], "files": ["src/x.py"]}
+    b2 = {"id": "b2", "tasks": [], "files": ["src/y.py"]}
+    lines, _ = dispatch(tmp_path, [b1, b2])
+    d = dict(lines)
+    assert d["T2"] == "poll b1,b2"
+    assert d["T5"] == "fresh"
+
+
+def test_commit_releases_pool_agent_and_dispatch_failure_keeps_commit(tmp_path):
+    repo = make_repo(tmp_path)
+    write(repo, "src/a.py", "def parse(text):\n    return text.split()\n")
+    pool_path = repo / ".superlite" / "pool.json"
+    pool_path.parent.mkdir(parents=True, exist_ok=True)
+    pool_path.write_text(json.dumps({"agents": [
+        {"id": "a1", "tasks": [], "busy": True, "current": "T1"}]}), encoding="utf-8")
+    r = run("commit_task", "T1", "--plan", "plan.md", cwd=repo)
+    assert r.returncode == 0, r.stderr
+    ag = json.loads(pool_path.read_text(encoding="utf-8"))["agents"][0]
+    assert ag["busy"] is False and "current" not in ag and ag["tasks"] == ["T1"]
+    # a broken pool after the commit: dispatch warns, the commit's exit code stands
+    write(repo, "src/b.py", "def lex(text):\n    return list(text)\n")
+    pool_path.write_text("{not json", encoding="utf-8")
+    r = run("commit_task", "T2", "--plan", "plan.md", "--dispatch", cwd=repo)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "warning: dispatch failed" in r.stderr and "next:" in r.stdout
+    assert git(repo, "log", "--format=%s", "-1") == "T2: lexer"
+
+
+def test_add_incidents_skips_only_the_bad_item(tmp_path, capsys):
+    sys.path.insert(0, str(SCRIPTS))
+    import next_tasks as nt
+    log = tmp_path / "i.jsonl"
+    old = os.environ.pop("SUPERLITE_SL", None)
+    try:
+        nt.add_incidents(log, [("a.py", 1, "ok", "test-failure", "run_tests", "open"),
+                               ("", 2, "no file", "test-failure", "run_tests", "open"),
+                               ("c.py", None, "no line", "test-failure", "run_tests", None),
+                               ("d.py", 0, "fine", "verified", "run_tests", None)])
+    finally:
+        if old is not None:
+            os.environ["SUPERLITE_SL"] = old
+    assert [r["file"] for r in read_log(log)] == ["a.py", "d.py"]
+    assert capsys.readouterr().err.count("warning: incident not logged") == 2
+
+
+def _sl(tmp_path, env_extra, *args):
+    bash = shutil.which("bash")
+    if not bash:
+        pytest.skip("bash not available")
+    env = {**ENV, "SUPERLITE_CACHE_DIR": str(tmp_path / "cache"), **env_extra}
+    env.pop("SUPERLITE_BASH")
+    return subprocess.run([bash, str(SCRIPTS / "sl"), *args], capture_output=True, text=True, env=env)
+
+
+def test_sl_unrunnable_superlite_python_falls_back_to_search(tmp_path):
+    r = _sl(tmp_path, {"SUPERLITE_PYTHON": str(tmp_path / "no such python.exe")},
+            "incident", "summary", "--log", str(tmp_path / "i.jsonl"))
+    if r.returncode == 3:
+        pytest.skip("no Python reachable from bash")
+    assert r.returncode == 0, r.stderr
+    assert "not runnable; searching" in r.stderr
+
+
+def test_sl_cache_is_keyed_on_path(tmp_path):
+    log = str(tmp_path / "i.jsonl")
+    r = _sl(tmp_path, {}, "incident", "summary", "--log", log)
+    if r.returncode == 3:
+        pytest.skip("no Python reachable from bash")
+    cache = tmp_path / "cache" / "python"
+    exe, key = cache.read_text().splitlines()
+    assert "|" in key
+    # same interpreter, a different PATH: the old entry no longer matches, a new probe rewrites it
+    r = _sl(tmp_path, {"PATH": os.environ["PATH"] + os.pathsep + str(tmp_path)},
+            "incident", "summary", "--log", log)
+    assert r.returncode == 0, r.stderr
+    exe2, key2 = cache.read_text().splitlines()
+    assert key2 != key and exe2
+
+
+def test_sl_tool_without_arguments(tmp_path):
+    r = _sl(tmp_path, {}, "graphify_gate")
+    if r.returncode == 3:
+        pytest.skip("no Python reachable from bash")
+    assert "unbound variable" not in r.stderr

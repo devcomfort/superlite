@@ -9,66 +9,68 @@ run_tree(cmd, timeout, **kw): subprocess.run that, on timeout, kills the whole p
 tree of the child it started (POSIX: new session + killpg; Windows: new process group +
 `taskkill /T /F /PID <child>`), never by name. Raises subprocess.TimeoutExpired.
 """
-import importlib.util
-import os
-import shutil
-import signal
-import subprocess
-import sys
+# Complexity notation:
+#   o = bytes of child stdout + stderr, a = length of the command argv, D = descendants of the child process, P = directories on PATH
+import importlib.util  # O(1)
+import os  # O(1)
+import shutil  # O(1)
+import signal  # O(1)
+import subprocess  # O(1)
+import sys  # O(1)
 
 
-class PytestUnavailable(RuntimeError):
-    pass
+class PytestUnavailable(RuntimeError):  # O(1)
+    pass  # O(1)
 
 
-def have_pytest():
-    return importlib.util.find_spec("pytest") is not None
+def have_pytest():  # O(1) import-path lookup (cached after first call)
+    return importlib.util.find_spec("pytest") is not None  # O(1) import-path lookup
 
 
-def pytest_cmd():
-    if have_pytest():
-        return [sys.executable, "-m", "pytest"]
-    uv = shutil.which("uv")
-    if uv:
-        return [uv, "run", "--no-project", "--with", "pytest", "python", "-m", "pytest"]
-    raise PytestUnavailable("pytest is not installed for this interpreter "
-                            f"({sys.executable}) and uv is not on PATH; "
-                            "install pytest (pip install pytest) or uv")
+def pytest_cmd():  # O(P) PATH search
+    if have_pytest():  # O(1) import-path lookup
+        return [sys.executable, "-m", "pytest"]  # O(1)
+    uv = shutil.which("uv")  # O(P) PATH search
+    if uv:  # O(1)
+        return [uv, "run", "--no-project", "--with", "pytest", "python", "-m", "pytest"]  # O(1)
+    raise PytestUnavailable("pytest is not installed for this interpreter "  # O(len(sys.executable))
+                            f"({sys.executable}) and uv is not on PATH; "  # O(1)
+                            "install pytest (pip install pytest) or uv")  # O(1)
 
 
-def kill_tree(proc):
-    """Kill proc and all its descendants. Only the process we started."""
-    try:
-        if os.name == "nt":
-            subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)],
-                           capture_output=True, check=False)
-        else:
-            os.killpg(proc.pid, signal.SIGKILL)
-    except (OSError, ProcessLookupError):
-        pass
-    try:
-        proc.kill()
-    except OSError:
-        pass
+def kill_tree(proc):  # O(D) + process spawn (taskkill)
+    """Kill proc and all its descendants. Only the process we started."""  # O(1)
+    try:  # O(1)
+        if os.name == "nt":  # O(1)
+            subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)],  # O(D) + process spawn (taskkill), output O(1) bytes
+                           capture_output=True, check=False)  # O(1)
+        else:  # O(1)
+            os.killpg(proc.pid, signal.SIGKILL)  # O(D) signal syscall
+    except (OSError, ProcessLookupError):  # O(1)
+        pass  # O(1)
+    try:  # O(1)
+        proc.kill()  # O(1)
+    except OSError:  # O(1)
+        pass  # O(1)
 
 
-def run_tree(cmd, timeout=None, **kw):
-    if os.name == "nt":
-        kw["creationflags"] = kw.get("creationflags", 0) | subprocess.CREATE_NEW_PROCESS_GROUP
-    else:
-        kw["start_new_session"] = True
-    kw.setdefault("stdout", subprocess.PIPE)
-    kw.setdefault("stderr", subprocess.PIPE)
-    if kw.pop("capture_output", False):
-        kw["stdout"] = kw["stderr"] = subprocess.PIPE
-    with subprocess.Popen(cmd, **kw) as proc:
-        try:
-            out, err = proc.communicate(timeout=timeout)
-        except subprocess.TimeoutExpired as e:
-            kill_tree(proc)
-            proc.communicate()
-            raise subprocess.TimeoutExpired(cmd, timeout, e.output, e.stderr) from None
-        except BaseException:
-            kill_tree(proc)
-            raise
-    return subprocess.CompletedProcess(cmd, proc.returncode, out, err)
+def run_tree(cmd, timeout=None, **kw):  # O(a + o) + process spawn; on timeout adds O(D) kill
+    if os.name == "nt":  # O(1)
+        kw["creationflags"] = kw.get("creationflags", 0) | subprocess.CREATE_NEW_PROCESS_GROUP  # O(1)
+    else:  # O(1)
+        kw["start_new_session"] = True  # O(1)
+    kw.setdefault("stdout", subprocess.PIPE)  # O(1)
+    kw.setdefault("stderr", subprocess.PIPE)  # O(1)
+    if kw.pop("capture_output", False):  # O(1)
+        kw["stdout"] = kw["stderr"] = subprocess.PIPE  # O(1)
+    with subprocess.Popen(cmd, **kw) as proc:  # O(a) + process spawn
+        try:  # O(1)
+            out, err = proc.communicate(timeout=timeout)  # O(o) read until exit or timeout
+        except subprocess.TimeoutExpired as e:  # O(1)
+            kill_tree(proc)  # O(D) + process spawn (taskkill) on POSIX O(D) signal
+            proc.communicate()  # O(o) drain remaining output
+            raise subprocess.TimeoutExpired(cmd, timeout, e.output, e.stderr) from None  # O(o)
+        except BaseException:  # O(1)
+            kill_tree(proc)  # O(D) kill
+            raise  # O(1)
+    return subprocess.CompletedProcess(cmd, proc.returncode, out, err)  # O(1)
