@@ -15,6 +15,17 @@ Save to `docs/plans/YYYY-MM-DD-<topic>.md`. When called from `superlite:brainsto
 
 `lint --stable` splits the plan into STABLE and FIX tasks (with reasons) and writes `.superlite/stable.json`. A task is stable when its own checks pass, every Consumes has a clean Produces line somewhere (even in an unstable task), it has no taskgraph edge to an unstable task, and it is not on a flagged `CHAIN:`. Plan-level issues (SPEC coverage, `CHAIN:`, the size cap, `MISSED TARGET`) never block stable tasks. `dispatch` offers only stable tasks: the coordinator dispatches them at once, patches only the FIX tasks (edits, never full rewrites), re-lints, and dispatches the newly stable ones. Stable and dispatched tasks have frozen interfaces; a later change is reported as `FROZEN:` and becomes a follow-up fix task, not a restart. `**Status:** draft` stays as an optional manual hold: `next_tasks` and `dispatch` skip draft tasks and their dependents, and draft tasks may keep placeholders.
 
+## Write for the split
+
+You are not writing a document to be approved whole. You are writing a queue that starts building while you write. Lint will split what you write into stable tasks, which build now, and fix tasks, which wait. Write so the first part you write is stable on its own.
+
+1. **Write in chunks, not one Write.** Chunk 1 is the header, Global constraints, the main diagram with its `%% taskgraph`, and the producer tasks: the ones others consume, with no incoming edges. Then run `schedule --insert` and `lint --stable` so they dispatch. Append each later chunk with an edit, extending the taskgraph, and re-lint. Never rewrite a chunk that has dispatched.
+2. **Producers first, with exact `Produces` lines.** Lint resolves each `Consumes` against some task's `Produces` line, so write producers before their consumers: exact name, parameter types and return type. A consumer is then stable the moment it's written, even while its producer is still building or being fixed.
+3. **Finish each task block before starting the next.** No placeholders, and every field filled. A half-written task is a fix task, and so is everything with an edge to it.
+4. **Size each task for the band as you write it.** Fill Components, LOC owned and Tests honestly, and aim for 2-5 min predicted. Something that looks over 6 min is two blocks from the start (server / UI, engine / CLI), not one block that lint sends back.
+5. **Fewest edges.** Draw an edge only when a task's tests run another task's code. Order tasks so that those with no edges come first and each later chunk adds only what the earlier ones unblock.
+6. **Mark the easy ones.** A task that meets the `Kind: mechanical` rules gets `Kind: mechanical` and `Model: haiku` when you write it.
+
 ## Plan shape, in this order
 
 1. **Header:** Goal, Architecture, Tech stack, Spec path, `**Detail:** contracts | tests | full` (default `tests`), `**Target-min:** N` (predicted-total target, default 11), global constraints (exact values copied from the spec: version floors, names, formats). Task briefs point here, so do not repeat constraints per task.
