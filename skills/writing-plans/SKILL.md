@@ -18,12 +18,12 @@ Save to `docs/plans/YYYY-MM-DD-<topic>.md`. When called from `superlite:brainsto
 ## Write for the split
 
 **Who orchestrates sets the mode** (`sl orchestrator status`).
-- **Human orchestrator** (the human validates the plan before it runs): the plan is a document approved as a whole. In order:
-  1. Write it complete, in the order below (producers first, task blocks complete and sized for the band).
-  2. Run only `schedule --insert`, so the plan shows its Gantt and predicted time. Do not lint yet.
-  3. Show the human the plan as written: the path and the predicted schedule line. Ask for approval. Nothing is linted or dispatched before the yes (`lint --stable`, `dispatch`, `wave0` and `build_prime` refuse until `sl orchestrator approve`).
-  4. On yes, run `sl orchestrator approve`; the coordinator runs `lint --stable` and dispatches the stable set in the same turn, split out per `dispatch`.
-  5. It patches the FIX tasks, re-lints and dispatches the newly stable ones without asking again, as long as each fix stays inside what was approved (sizes, splits, stubs, field corrections). A fix that changes scope, an interface the human saw, or the spec coverage goes back to the human as one question.
+- **Human orchestrator** (the human validates the plan before it runs), two phases:
+  1. Write the review plan: `docs/plans/<date>-<topic>.review.md`, plain words with diagrams, no code or taskgraph (template and rules: `review-plan.md`).
+  2. Show it: the path and a five-line summary. Ask for approval. Nothing is linted or dispatched before the yes (`lint --stable`, `dispatch`, `wave0` and `build_prime` refuse).
+  3. On yes: `sl orchestrator approve --review <path>`.
+  4. Write the machine plan `docs/plans/<date>-<topic>.md` from the approved review plan, in the order below (same tasks and scope, header `**Review plan:** <path>`), then `schedule --insert`, `lint --stable`, and dispatch the stable set in the same turn.
+  5. It patches the FIX tasks, re-lints and dispatches the newly stable ones without asking again, as long as each fix stays inside what was approved (sizes, splits, stubs, field corrections). A fix that changes scope, an interface the human saw, or the spec coverage goes back to the human as one question. AI orchestrator: no review plan, straight to the machine plan.
 - **AI orchestrator** (hands off: the user pre-approved, said "decide yourself", or an agent runs the session): write a queue that starts building while the fixes are made. Lint splits what you write into stable tasks, which build now, and fix tasks, which wait. Follow all six rules. Record open choices as `Ruling:` lines.
 
 In both modes, write for the split:

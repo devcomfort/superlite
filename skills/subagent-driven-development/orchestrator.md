@@ -2,8 +2,10 @@
 
 When someone asks superlite to create something, it first settles who orchestrates (D40).
 
-- **Human orchestrator:** the human validates the plan before it is linted and sent off. The plan is shown whole with its
-  predicted schedule (`schedule --insert` stays allowed), `lint --stable` only after the yes.
+- **Human orchestrator:** the human validates the plan before it is linted and sent off, in two phases. Phase 1: the review plan
+  (`docs/plans/<date>-<topic>.review.md`, plain words with diagrams; template in `../writing-plans/review-plan.md`) is shown with its
+  path and a five-line summary. Phase 2, after the yes: `sl orchestrator approve --review <path>`, then the coordinator writes the
+  machine plan from it (header `**Review plan:** <path>`), `schedule --insert`, `lint --stable`, dispatch.
 - **AI orchestrator:** does everything itself (plan, lint, dispatch, rulings) and never stops to ask, except for the
   destructive, outward-facing or security-sensitive actions in the SDD "Stop conditions".
 
@@ -20,7 +22,9 @@ unattended signal (all mean AI). When no human can answer (a headless `claude -p
 ## The tool (`sl orchestrator`)
 - `set human|ai [--by NAME] [--ruling TEXT]` writes `.superlite/orchestrator.json` `{mode, approved, by, time}`
   (`approved` is true for AI, false for human until `approve`).
-- `approve [--by NAME]` records the approval (human mode only; exit 2 otherwise).
+- `approve [--by NAME] [--review PATH]` records the approval (human mode only; exit 2 otherwise). `--review` also records the review
+  plan's path and sha256 in `orchestrator.json` (`review_path`, `review_sha256`); a missing file fails with exit 2; without `--review`
+  nothing else changes. `status` and `finish` print the review plan path.
 - `status` prints one line: `orchestrator: human, awaiting approval` / `human, approved <time> by <name>` / `AI` / `not set (ungated)`.
 - Gate: in human mode without an approval `plan_tools lint --stable`, `dispatch`, `wave0` and `build_prime` exit 4 with
   `BLOCKED: human orchestrator selected, show the plan, ask for approval, then run sl orchestrator approve`.

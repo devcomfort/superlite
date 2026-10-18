@@ -2,19 +2,22 @@
 """Who orchestrates: a human (approves the plan before it runs) or an AI (does everything itself).
 
     orchestrator.py set human|ai [--by NAME] [--ruling TEXT]
-    orchestrator.py approve [--by NAME]
+    orchestrator.py approve [--by NAME] [--review PATH]
     orchestrator.py status [--plan P]
 
 State: `.superlite/orchestrator.json` {mode, approved, by, time}. In human mode `plan_tools lint --stable`, `dispatch`,
 `wave0` and `build_prime` refuse to run (exit 4, one line) until `approve` has been recorded; `schedule --insert` and
 `prune` stay allowed so the plan can be shown whole with its Gantt. In AI mode nothing is gated. With no file nothing is
 gated (existing runs behave as before). `--ruling` on `set ai` also appends a `Ruling:` line to `.superlite/progress.md`
-(for a headless run where no human can answer). Library: gate(plan_or_dir, tool) -> message or None,
+(for a headless run where no human can answer).
+`approve --review PATH` also records the review plan's path and sha256 (the plain-language plan the human approved; a missing
+file fails with exit 2); `approve` alone keeps working. `status` and `finish` print the review plan path. Library: gate(plan_or_dir, tool) -> message or None,
 require(plan_or_dir, tool) -> exit code (prints the message), read_state, summary_line. Stdlib only.
 """
 # Complexity notation:
 #   everything here is O(1) file work
 import argparse  # O(1)
+import hashlib  # O(1)
 import json  # O(1)
 import sys  # O(1)
 from datetime import datetime  # O(1)
@@ -81,7 +84,8 @@ def summary_line(plan_or_dir=None) -> str:  # O(file)
     if st["mode"] == "ai":  # O(1)
         return f"orchestrator: AI (set {st.get('time', '?')} by {st.get('by', '?')})"  # O(1)
     if st.get("approved"):  # O(1)
-        return f"orchestrator: human, approved {st.get('approved_time') or st.get('time')} by {st.get('approved_by') or st.get('by')}"  # O(1)
+        review = f", review plan {st['review_path']}" if st.get("review_path") else ""  # O(1)
+        return f"orchestrator: human, approved {st.get('approved_time') or st.get('time')} by {st.get('approved_by') or st.get('by')}{review}"  # O(1)
     return f"orchestrator: human, awaiting approval (set {st.get('time', '?')})"  # O(1)
 
 
@@ -98,6 +102,7 @@ def main(argv=None):  # O(1)
     s.add_argument("--ruling", help="with ai: also record a Ruling: line in .superlite/progress.md")  # O(1)
     a_ = sub.add_parser("approve")  # O(1)
     a_.add_argument("--by", default="human")  # O(1)
+    a_.add_argument("--review", help="the approved review plan (docs/plans/<date>-<topic>.review.md): path and sha256 are recorded")  # O(1)
     st = sub.add_parser("status")  # O(1)
     for p in (s, a_, st):  # O(1)
         p.add_argument("--plan", help="plan path (locates .superlite); default ./.superlite")  # O(1)
@@ -115,6 +120,12 @@ def main(argv=None):  # O(1)
         if not cur or cur["mode"] != "human":  # O(1)
             print("orchestrator: approve applies to human mode only; run: sl orchestrator set human", file=sys.stderr)  # O(1)
             return 2  # O(1)
+        if a.review:  # O(1)
+            rp = Path(a.review)  # O(1)
+            if not rp.is_file():  # O(1)
+                print(f"orchestrator: review plan not found: {a.review}", file=sys.stderr)  # O(1)
+                return 2  # O(1)
+            cur.update(review_path=a.review.replace(chr(92), "/"), review_sha256=hashlib.sha256(rp.read_bytes()).hexdigest())  # O(size)
         cur.update(approved=True, approved_by=a.by, approved_time=now())  # O(1)
         write_state(a.plan, cur)  # O(1)
     print(summary_line(a.plan))  # O(1)

@@ -125,3 +125,82 @@ def test_skill_size_caps_and_the_new_names():
     assert brain.count("AskUserQuestion") >= 1 and "ONE `AskUserQuestion` call" in brain
     plans = (skills / "writing-plans" / "SKILL.md").read_text(encoding="utf-8")
     assert "**Human orchestrator**" in plans and "**AI orchestrator**" in plans and "A human approves" not in plans
+
+
+# ---------------------------------------------------------------- review plan (human orchestrator, phase 1)
+
+import hashlib  # noqa: E402
+
+REVIEW = REPO / "skills" / "writing-plans" / "review-plan.md"
+
+
+def review_file(tmp_path, name="plan.review.md"):
+    f = tmp_path / "docs" / "plans" / name
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text("# Review plan\n\n## Summary\nA word counter.\n", encoding="utf-8")
+    return f
+
+
+def test_approve_review_records_path_and_sha256(tmp_path):
+    orch(tmp_path, "set", "human")
+    f = review_file(tmp_path)
+    cp = orch(tmp_path, "approve", "--by", "erin", "--review", f)
+    assert cp.returncode == 0, cp.both
+    st = json.loads((tmp_path / ".superlite" / "orchestrator.json").read_text(encoding="utf-8"))
+    assert st["review_path"] == str(f).replace("\\", "/") and st["review_sha256"] == hashlib.sha256(f.read_bytes()).hexdigest()
+    assert st["approved"] is True and st["approved_by"] == "erin"
+    assert f"review plan {st['review_path']}" in cp.out
+
+
+def test_approve_review_with_a_missing_file_fails_and_does_not_approve(tmp_path):
+    orch(tmp_path, "set", "human")
+    cp = orch(tmp_path, "approve", "--review", tmp_path / "nope.review.md")
+    assert cp.returncode == 2 and "review plan not found" in cp.err
+    st = json.loads((tmp_path / ".superlite" / "orchestrator.json").read_text(encoding="utf-8"))
+    assert st["approved"] is False and "review_path" not in st
+    assert "awaiting approval" in orch(tmp_path, "status").out
+
+
+def test_approve_without_review_is_unchanged(tmp_path):
+    orch(tmp_path, "set", "human")
+    cp = orch(tmp_path, "approve", "--by", "frank")
+    st = json.loads((tmp_path / ".superlite" / "orchestrator.json").read_text(encoding="utf-8"))
+    assert cp.returncode == 0 and st["approved"] is True and "review_path" not in st and "review plan" not in cp.out
+
+
+def test_status_and_finish_show_the_review_plan_path(tmp_path):
+    orch(tmp_path, "set", "human")
+    f = review_file(tmp_path)
+    orch(tmp_path, "approve", "--review", f)
+    path = str(f).replace("\\", "/")
+    assert f"review plan {path}" in orch(tmp_path, "status").out
+    assert f"review plan {path}" in finish(tmp_path)
+    p = mech_plan(tmp_path, 2)
+    assert BLOCK not in run(SCRIPTS / "plan_tools.py", "lint", "--stable", "--plan", p, cwd=tmp_path).both  # the gate opened
+
+
+REQUIRED_SECTIONS = ["## Summary", "## What you will get", "## What will be built", "## How it fits together", "## How it gets built",
+                     "## Decisions you can change", "## Risks", "## Out of scope", "## How we will know it works", "## Rough time and cost"]
+
+
+def test_review_plan_template_names_every_required_section_and_has_two_diagrams():
+    text = REVIEW.read_text(encoding="utf-8")
+    for h in REQUIRED_SECTIONS:
+        assert h in text, h
+    assert text.count("```mermaid") >= 2  # the example carries both diagrams
+    for word in ("Size (S/M/L)", "at most 12 nodes", "rough until", "Do not", "Do\n", "five-line summary", "sha256", "**Review plan:**"):
+        assert word in text, word
+
+
+def test_skills_mention_both_phases_and_keep_their_caps():
+    skills = REPO / "skills"
+    plans = (skills / "writing-plans" / "SKILL.md").read_text(encoding="utf-8")
+    brain = (skills / "brainstorming" / "SKILL.md").read_text(encoding="utf-8")
+    sdd = (skills / "subagent-driven-development" / "SKILL.md").read_text(encoding="utf-8")
+    for text in (plans, brain):
+        assert ".review.md" in text and "review-plan.md" in text and "approve --review" in text
+    assert "**Review plan:**" in plans and "machine plan" in plans and "machine plan" in brain
+    assert "approve --review PATH" in sdd and "review plan" in sdd
+    assert len((skills / "using-superlite" / "SKILL.md").read_text(encoding="utf-8")) <= 2000 and len(sdd) <= 11600
+    readme = (REPO / "README.md").read_text(encoding="utf-8")
+    assert "review plan" in readme.lower() and "You approve first" in readme
