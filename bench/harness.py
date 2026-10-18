@@ -57,8 +57,15 @@ def prompt_path(human: bool = False, task: str | None = None) -> Path:
     return own if task != "sitegen" and own.is_file() else BENCH / name
 
 
+# Environment guard for arms without superlite's own hook: an arm that kills by name
+# (taskkill /IM python.exe) also kills the harness and the other arm. The guard only blocks
+# name/pattern kills; it adds no skills or context, so the superpowers arm stays stock.
+KILL_GUARD = {"PreToolUse": [{"matcher": "Bash|PowerShell", "hooks": [{
+    "type": "command", "command": f'bash "{ROOT.as_posix()}/hooks/block-unsafe-kill"'}]}]}
+
 ARM_ARGS = {
-    "superpowers": ["--settings", json.dumps({"skillOverrides": {"orchestrator": "off"}})],
+    "superpowers": ["--settings", json.dumps({"skillOverrides": {"orchestrator": "off"},
+                                              "hooks": KILL_GUARD})],
     "superlite": [
         "--settings",
         json.dumps({
