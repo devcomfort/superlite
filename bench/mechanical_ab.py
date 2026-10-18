@@ -185,7 +185,7 @@ def execute(job: dict) -> dict:
         t0 = time.time()
         with log.open("w", encoding="utf-8") as lf, (job["out"] / f"{task.id}-{model}-{k}.stderr").open("w") as ef:
             proc = subprocess.Popen(cmd, cwd=dest, stdout=lf, stderr=ef, stdin=subprocess.DEVNULL, env=harness.arm_env(),
-                                    creationflags=0 if os.name != "nt" else subprocess.CREATE_NEW_PROCESS_GROUP,
+                                    creationflags=0 if os.name != "nt" else subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW,
                                     start_new_session=os.name != "nt")
             rec["pid"] = proc.pid
             try:

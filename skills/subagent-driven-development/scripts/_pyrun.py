@@ -60,7 +60,7 @@ def kill_tree(proc):  # O(D) + process spawn (taskkill)
 
 def run_tree(cmd, timeout=None, **kw):  # O(a + o) + process spawn; on timeout adds O(D) kill
     if os.name == "nt":  # O(1)
-        kw["creationflags"] = kw.get("creationflags", 0) | subprocess.CREATE_NEW_PROCESS_GROUP  # O(1)
+        kw["creationflags"] = kw.get("creationflags", 0) | subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW  # O(1) hidden console
     else:  # O(1)
         kw["start_new_session"] = True  # O(1)
     kw.setdefault("stdout", subprocess.PIPE)  # O(1)
@@ -84,7 +84,7 @@ def spawn_detached(cmd, log, **kw):  # O(a) + process spawn; does not wait
     env = {**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}  # O(env)
     if os.name == "nt":  # O(1)
         kw["creationflags"] = (kw.get("creationflags", 0) | subprocess.CREATE_NEW_PROCESS_GROUP  # O(1)
-                               | subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW)  # O(1)
+                               | subprocess.CREATE_NO_WINDOW)  # never DETACHED_PROCESS: it makes CREATE_NO_WINDOW ignored and every console child pops a window | O(1)
     else:  # O(1)
         kw["start_new_session"] = True  # O(1)
     with open(log, "ab") as fh:  # O(1)

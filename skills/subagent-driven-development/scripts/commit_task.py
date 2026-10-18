@@ -178,7 +178,7 @@ def setup_exclude():  # O(x) + process spawn
 def spawn_background(cmd):  # O(1) + process spawn
     kw = {}  # O(1)
     if os.name == "nt":  # O(1)
-        kw["creationflags"] = 0x00000008 | 0x00000200  # DETACHED | NEW_GROUP | O(1)
+        kw["creationflags"] = 0x08000000 | 0x00000200  # CREATE_NO_WINDOW | NEW_GROUP (not DETACHED: it makes NO_WINDOW ignored and console children pop windows) | O(1)
     else:  # O(1)
         kw["start_new_session"] = True  # O(1)
     subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,  # O(1) + process spawn

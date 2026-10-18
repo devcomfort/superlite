@@ -1270,7 +1270,7 @@ def spawn_background(argv: list[str]) -> int:  # O(argv) + process spawn
     args = [x for x in argv if x != "--background"]  # O(1)
     kw: dict = {}  # O(1)
     if IS_WIN:  # O(1)
-        kw["creationflags"] = 0x00000008 | 0x00000200 | 0x08000000  # O(1)
+        kw["creationflags"] = 0x00000200 | 0x08000000  # O(1) NEW_GROUP | CREATE_NO_WINDOW; never DETACHED, it overrides NO_WINDOW
     else:  # O(1)
         kw["start_new_session"] = True  # O(1)
     p = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), *args],  # O(1) + process spawn

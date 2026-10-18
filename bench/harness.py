@@ -26,6 +26,16 @@ from pathlib import Path
 
 import mechanical
 
+if os.name == "nt":  # every child (claude, bash, uv, git, pytest) gets a hidden console: no popup windows
+    _Popen = subprocess.Popen
+
+    class _NoWindowPopen(_Popen):
+        def __init__(self, *args, **kwargs):
+            kwargs["creationflags"] = kwargs.get("creationflags", 0) | subprocess.CREATE_NO_WINDOW
+            super().__init__(*args, **kwargs)
+
+    subprocess.Popen = _NoWindowPopen
+
 ROOT = Path(__file__).resolve().parent.parent
 BENCH = ROOT / "bench"
 # Outside the repo, so an arm can't wander up into hidden_tests/ or reference/.
