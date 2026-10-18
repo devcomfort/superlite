@@ -69,6 +69,13 @@ def test_inactive_run_allowed(tmp_path):
     assert bash(tmp_path, "sed -i s/a/b/ a.py").returncode == 0
 
 
+def test_stable_json_marker_activates_before_wave_0(tmp_path):
+    # lint --stable writes stable.json before Wave 0, so the guard is already on when the skeleton is written.
+    (tmp_path / ".superlite").mkdir()
+    (tmp_path / ".superlite" / "stable.json").write_text("{}")
+    assert run(tmp_path, "Write", {"file_path": "pyproject.toml"}).returncode == 2
+
+
 def test_prime_marker_activates(tmp_path):
     (tmp_path / ".superlite").mkdir()
     (tmp_path / ".superlite" / "prime.md").write_text("x")
