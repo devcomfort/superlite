@@ -1,0 +1,134 @@
+#!/usr/bin/env bash
+# PreToolUse hook (Edit, Write, NotebookEdit, Bash, PowerShell): during an active superlite run, block
+# the COORDINATOR (the main session, whose calls carry no agent_id) from writing project code, and say
+# what to do instead. Subagent calls carry agent_id and always pass. A run is active when
+# $project/.superlite/prime.md or pool.json exists. Allowed write targets: docs/plans/**, SPEC*.md,
+# docs/**/*.md, .superlite/**. Bash/PowerShell detection is best-effort; when unsure, allow.
+# Bash builtins only (no external process is spawned: each spawn costs ~250 ms on Windows), and the
+# cheap exits come first. Exit 2 blocks (message on stderr); anything else, including malformed
+# input, exits 0 (fail open).
+
+IFS= read -r -d '' input   # builtin; returns 1 at EOF, which is fine
+
+re_agent='"agent_id"[[:space:]]*:[[:space:]]*"'
+[[ $input =~ $re_agent ]] && exit 0   # subagent call
+re_tool='"tool_name"[[:space:]]*:[[:space:]]*"([A-Za-z]+)"'
+[[ $input =~ $re_tool ]] || exit 0
+tool="${BASH_REMATCH[1]}"
+case "$tool" in Edit|Write|NotebookEdit|MultiEdit|Bash|PowerShell) ;; *) exit 0 ;; esac
+
+# jstr KEY: first JSON string value for KEY, still JSON-escaped, into REPLY (empty if absent).
+jstr() {
+  local re='"'"$1"'"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)"'
+  REPLY=""
+  [[ $input =~ $re ]] && REPLY="${BASH_REMATCH[1]}"
+}
+
+# norm PATH: forward slashes, no duplicate or trailing slashes, C:/x -> /c/x, into NORM.
+norm() {
+  local p="${1//\\//}" re='^([A-Za-z]):/(.*)$'
+  while [[ $p == *//* ]]; do p="${p//\/\//\/}"; done
+  [[ $p =~ $re ]] && p="/${BASH_REMATCH[1],,}/${BASH_REMATCH[2]}"
+  while [[ $p == */ && $p != / ]]; do p="${p%/}"; done
+  NORM="$p"
+}
+
+proj="${CLAUDE_PROJECT_DIR:-}"
+if [ -z "$proj" ]; then jstr cwd; proj="${REPLY//\\\\//}"; fi
+[ -n "$proj" ] || proj="$PWD"
+[ -f "$proj/.superlite/prime.md" ] || [ -f "$proj/.superlite/pool.json" ] || exit 0
+
+norm "$proj"; projn="$NORM"; projl="${projn,,}"
+
+# project_code PATH: succeeds when PATH is inside the project and not an allowed docs/state path.
+project_code() {
+  local p rel pl
+  norm "$1"; p="$NORM"; p="${p%\"}"; p="${p#\"}"; p="${p%\'}"; p="${p#\'}"
+  case "$p" in ''|*'$'*|'~'*|/dev/*|-*) return 1 ;; esac
+  case "$p" in
+    /*) pl="${p,,}"
+        case "$pl" in "$projl"/*) rel="${p:$((${#projn}+1))}" ;; *) return 1 ;; esac ;;
+    *) rel="${p#./}" ;;
+  esac
+  case "$rel" in ''|.|..|../*) return 1 ;; esac
+  case "$rel" in
+    docs/plans/*|docs/*.md|SPEC*.md|*/SPEC*.md|.superlite/*) return 1 ;;
+  esac
+  return 0
+}
+
+hit=""
+if [ "$tool" != Bash ] && [ "$tool" != PowerShell ]; then
+  jstr file_path; f="$REPLY"
+  if [ -z "$f" ]; then jstr notebook_path; f="$REPLY"; fi
+  [ -n "$f" ] || exit 0
+  project_code "$f" && hit="$f"
+else
+  jstr command; cmd="$REPLY"
+  [ -n "$cmd" ] || exit 0
+  cmd="${cmd//\\\"/\"}"; cmd="${cmd//\\t/ }"; cmd="${cmd//\\r/}"; cmd="${cmd//\\n/$'\n'}"
+  # Inline interpreter writers (checked on the full text, heredoc bodies included).
+  re_interp='(^|[^[:alnum:]_])(python[0-9.]*|node|ruby|php)([[:space:]]|$)'
+  re_writer="open\([^)]*,[[:space:]]*['\"][wax]b?\+?['\"]|\.(write_text|write_bytes)\(|writeFileSync|writeFile\(|appendFile(Sync)?\(|fs\.write"
+  lc="${cmd,,}"
+  if [[ $lc =~ $re_interp && $cmd =~ $re_writer ]]; then
+    hit="${cmd:0:120}"; hit="${hit//$'\n'/ }"
+  fi
+  if [ -z "$hit" ]; then
+    # Drop heredoc bodies and quoted strings, then split into simple commands.
+    sq="'"; dq='"'
+    re_here="<<-?[[:space:]]*[$sq$dq]?([A-Za-z_][A-Za-z_0-9]*)"
+    re_quote="^([^$dq$sq]*)($dq[^$dq]*$dq|$sq[^$sq]*$sq)(.*)\$"
+    stripped=""; skip=0; tag=""
+    while IFS= read -r line; do
+      if [ "$skip" = 1 ]; then
+        t="${line#"${line%%[![:space:]]*}"}"; t="${t%"${t##*[![:space:]]}"}"
+        [ "$t" = "$tag" ] && skip=0
+        continue
+      fi
+      if [[ $line =~ $re_here ]]; then tag="${BASH_REMATCH[1]}"; skip=1; fi
+      while [[ $line =~ $re_quote ]]; do line="${BASH_REMATCH[1]}Q${BASH_REMATCH[3]}"; done
+      line="${line//&&/$'\n'}"; line="${line//||/$'\n'}"; line="${line//;/$'\n'}"; line="${line//|/$'\n'}"
+      stripped="$stripped$line"$'\n'
+    done <<< "$cmd"
+    re_redir='[0-9]?>>?[[:space:]]*([^[:space:]<>&|;()]+)(.*)$'
+    while IFS= read -r seg; do
+      case "$seg" in *'$SL'*|*'${SL}'*|*subagent-driven-development/scripts*) continue ;; esac
+      rest="$seg"
+      while [[ $rest =~ $re_redir ]]; do
+        t="${BASH_REMATCH[1]}"; rest="${BASH_REMATCH[2]}"
+        project_code "$t" && { hit="> $t"; break; }
+      done
+      [ -n "$hit" ] && break
+      set -f; set -- $seg; set +f
+      while [ $# -gt 0 ]; do case "$1" in *=*|sudo|command|env|time) shift ;; *) break ;; esac; done
+      [ $# -gt 0 ] || continue
+      c="${1##*/}"; c="${c%.exe}"; shift
+      args=(); for a in "$@"; do case "$a" in -*) ;; *) args+=("$a") ;; esac; done
+      n=${#args[@]}; last=""; [ "$n" -gt 0 ] && last="${args[n-1]}"
+      case "$c" in
+        patch) hit="patch" ;;
+        git) [ "$1" = apply ] && hit="git apply" ;;
+        sed) case " $* " in *' -i'*|*' --in-place'*) [ -n "$last" ] && project_code "$last" && hit="sed -i $last" ;; esac ;;
+        perl) case " $* " in *' -pi'*|*' -i'*|*' -ni'*) [ -n "$last" ] && project_code "$last" && hit="perl -i $last" ;; esac ;;
+        tee) for a in "${args[@]}"; do project_code "$a" && { hit="tee $a"; break; }; done ;;
+        rm|mv) for a in "${args[@]}"; do project_code "$a" && { hit="$c $a"; break; }; done ;;
+        cp) [ "$n" -gt 1 ] && project_code "$last" && hit="cp $last" ;;
+      esac
+      [ -n "$hit" ] && break
+    done <<< "$stripped"
+  fi
+fi
+
+[ -n "$hit" ] || exit 0
+
+hit="${hit:0:120}"; hit="${hit//[\"\\$'\n\r\t']/}"
+printf '{"kind":"rule-block","agent":"coordinator","tool":"%s","target":"%s"}\n' "$tool" "$hit" \
+  >> "$proj/.superlite/incidents.jsonl" 2>/dev/null
+
+printf '%s\n' \
+  'Blocked: the superlite coordinator must not write project code. Dispatch it instead:' \
+  '- Fix: give a fixer a finding id F-<Tn>-<n> and the note path .superlite/fixes/<id>.md, tiered per skills/subagent-driven-development/fixing.md: fully specified fix -> fixer-haiku; known cause, one module -> fixer-sonnet; cross-module -> fixer-sonnet-high; unknown cause -> fixer-opus.' \
+  '- Wave 0 skeleton/stub/config files belong to an implementer-haiku task.' \
+  '- New code belongs to an implementer task. You may write only docs/plans/**, SPEC*.md, docs/**/*.md and .superlite/**.' >&2
+exit 2
