@@ -1,98 +1,127 @@
 ---
 name: subagent-driven-development
-description: Use when executing an implementation plan that has a Waves table or several tasks. Runs tasks in parallel waves with pipelined review and routed models.
+description: Use when executing a superlite plan that has a %% taskgraph. Runs a ready-queue scheduler over an idle agent pool, with scripts for the mechanical steps, selective reviews, and a packet-only final review.
 ---
 
 # Subagent-Driven Development
 
-You are the coordinator. You decide, dispatch, integrate and commit. Workers read, write and run, on the cheapest model that does the job. Your context is the budget: everything you read or paste is re-sent every turn. Keep narration to one short line between tool calls. Agents carry their own rules: never paste skill text into a brief.
+You are the coordinator. You decide, dispatch and rule; scripts do everything with a definite answer; agents design, write, review and fix. Read each script's one-line output, never raw logs. Keep narration to one line between tool calls. Do not change your own effort. Agents carry their rules: never paste skill text into a brief.
 
-**Rulings, not stalls.** A running plan does not wait on a human. Conflicts, ambiguities, plan defects: decide them (the spec is binding, the plan is its argument, your judgment fills the rest). Append `Ruling: <decision> - <why> - <cost if wrong>` to the progress file and keep going. Stop only for: an irreversible or destructive operation; a security-sensitive action; an outward side effect (merge, push, publish); a plan so broken every path is a guess.
+Shorthand used below (every agent brief states `SUPERLITE=<path>`):
+`SUPERLITE` = the plugin root (`$CLAUDE_PLUGIN_ROOT`). `SL="bash $SUPERLITE/skills/subagent-driven-development/scripts/sl"`. `PLAN` = the plan file; pass `--plan $PLAN` everywhere. Tool exit 3 means no Python: log the gap with `$SL incident add` and continue without it.
 
-**Unattended** (the user is away, said "decide yourself", or pre-approved the run): never end your turn to wait. For the four cases above, take the safe path instead: skip or defer the outward or destructive action, choose the most conservative reading of a broken plan, record the ruling, and keep going. The closing message lists what you deferred.
+**Rulings, not stalls.** Decide conflicts and plan defects yourself (the spec binds, the plan argues, your judgment fills the rest). Append `Ruling: <decision> - <why> - <cost if wrong>` to `.superlite/progress.md`; `finish` collects them.
 
 ## Setup
 
-- Branch: if on the default branch, create `superlite/<topic>`. No worktree and no consent prompt. Record the start SHA (`git rev-parse HEAD`) in the progress file; the final review diffs from it.
-- Progress file `docs/plans/<plan>-progress.md`: one line per task (`Task N: done <sha> agent <id>`), each `Ruling:`, and per wave its minutes plus each task's actual vs estimated context when the result reports usage. It is the recovery map after compaction: trust it and `git log` over memory, and never re-dispatch a done task. Commit the plan and the progress file with the first task commit and again at the end.
-- Scratch files (primes, diffs) go in the OS temp dir (`${TMPDIR:-${TEMP:-/tmp}}/superlite-<topic>/`), never in the repo.
-- Read the plan once (header, global constraints, Waves table). One todo per wave. If a task text is ambiguous, rule on it now and put the ruling in its task message.
-- **Skeleton first.** Before wave 1, create whatever every parallel task needs in order to run its tests (project manifest, package `__init__`, test config, shared error types) yourself, in one commit, unless the plan has a Wave 0 task for it. Parallel tasks must never collide on these files.
+```mermaid
+flowchart LR
+  B[branch + start SHA] --> K[skeleton + stubs: Wave 0 commit]
+  B --> P[build_prime, first batch primed]
+  K --> A[adapter]
+  P -. READY .-> T[first tasks]
+  K --> T
+```
 
-## Inline mode
+- Branch `superlite/<topic>` if on the default branch (checkout -b; no worktree, no prompt). Write the start SHA to `.superlite/progress.md` (`- start <sha>`). Add `.superlite/` and `probe-results.json` to `.git/info/exclude` so they never block a commit.
+- Wave 0, yourself, one commit of exact paths (never stage everything): project manifest, package inits, test config, shared error types, plus `$SL plan_tools stubs --plan $PLAN`. Stubs are contracts: nobody changes a signature without your ruling. Then `$SL plan_tools adapter --plan $PLAN` (writes `.superlite/probes/adapter.py` from the `Probe entry` lines).
+- Prime during Wave 0: `$SL build_prime --plan $PLAN --spec SPEC --sections "1,3"` prints `hash size` and writes `.superlite/prime.md`. Record the hash. Start the first ready tasks' agents now (see the loop); their tasks go out once Wave 0 is committed. Never retype the prime; a changed byte breaks the shared cache.
+- Incident log: `.superlite/incidents.jsonl` (append-only; agents call `$SL incident add`, so there is nothing to copy). You log BLOCKED and NEEDS_CONTEXT with `--agent coordinator`.
+- Graphify: `$SL graphify_gate` prints JSON. `use` false: skip. Installed: `graphify update .`. `needs_install` and `allowed` (approved at the gate, or `SUPERLITE_ALLOW_INSTALL=graphify`): `uv tool install graphifyy`, then `graphify extract . --code-only`. Otherwise skip; never install silently. You alone run `graphify update .` after each package commits.
 
-With 3 or fewer tasks, or one dependency chain, skip agents: implement directly (TDD), commit per task, run the full suite once via test-runner, then do the final review. Waves buy nothing here.
+## Planning check
 
-## Routing: every Agent call sets `model` and `effort`
+```mermaid
+flowchart LR
+  S[schedule --insert] --> L[lint]
+  L -- MISSED TARGET --> R{re-split / stub, or Ruling}
+  R --> S
+  L -- issues, exit 1 --> F[fix the plan] --> L
+```
 
-| Work | subagent_type | model | effort |
-|---|---|---|---|
-| Find files or symbols | Explore | haiku | low |
-| Explain how code works | Explore | sonnet | medium |
-| Implement a task (low when the plan carries full code or the change is single-file mechanical) | superlite:implementer | sonnet | medium |
-| Run tests or a build | superlite:test-runner | haiku | low |
-| Wave review | superlite:reviewer | sonnet | medium |
-| Package or mid-build review of a finished component (optional) | fork | opus | high |
-| Final review: always, fresh eyes plus robustness probes | superlite:reviewer (final mode) | opus | high |
-| Web or docs research | general-purpose | sonnet | medium |
+Run `$SL plan_tools schedule --plan $PLAN --insert` (the target comes from the plan header), then `$SL plan_tools lint --plan $PLAN --spec SPEC`. Lint exit 1 lists real defects (placeholders, Consumes without Produces, oversize or over-3-min tasks): fix and rerun. `MISSED TARGET: ... critical path T1 -> T5` is a warning, exit 0. Consider splitting or stubbing the named tasks, then rerun `schedule --insert`; or accept it with `Ruling: accept predicted <N> min - <why sequential> - <cost>`. Show the warning and ruling at the approval gate. `taskgraph` warnings (`mergeable`) are handled by ruling.
 
-Pass `model` and `effort` on the call; they override the agent frontmatter. Haiku never reviews. For fix round 2 or a BLOCKED task, re-dispatch once on a stronger model, not the same one (a fresh agent skips the prime: brief it with the task message plus the plan path); if it is still blocked, take the task over yourself.
+## The scheduling loop
 
-## Waves
+```mermaid
+flowchart TB
+  N[next_tasks] --> A{assign}
+  A -- agent=ID --> M[task message]
+  A -- poll --> Q[relevance poll] --> M
+  A -- fresh --> P[prime verbatim] -- READY --> M
+  M --> D[DONE] --> C[commit_task] --> N
+  C -. background .-> PR[probe_run --commit]
+  C -. both sides in .-> SM[contract seam check]
+```
 
-- A wave is tasks that share no files and need no one else's output. At most 5 agents. Every implementer in a wave uses the same subagent_type, model and effort (identical prefix, shared cache): pick one effort per wave.
-- A task waits when its code or tests import an earlier task's files, or it documents what that task built.
-- A task needing only a name from another (a route, a flag), whose tests do not run that code, gets the name in both task messages and shares the wave.
-- Use the plan's wave assignment. Re-check it for file overlap; fix it by ruling if wrong.
-- **Context check before dispatch.** Read each task's `Est. context` line (no line: 20 tokens per line written, 37 per line read). Above 80k: split the task or add an Explore summary. Variable part (peak minus the implementer prefix, about 18k) below the prefix: merge it with a same-wave neighbor, if the merge stays under 80k. Record a ruling.
+Keep a `committed` and a `running` list and `.superlite/pool.json`: `{"agents":[{"id","tasks":[...],"files":[...],"context_k":N,"idle_min":N,"busy":false}]}`.
 
-## Prime, then assign
+1. `$SL next_tasks --plan $PLAN --committed T1,T2 --running T3 --cap 10` prints ready ids, longest first. Start all of them now; the rest start the moment any slot frees.
+2. Per id: `$SL assign --task Tn --pool .superlite/pool.json --plan $PLAN` prints one word. `agent=ID`: SendMessage the task to that idle agent. `poll`: one SendMessage to every eligible idle agent, "Relevance 0-10 for Tn (files, consumes)? Reply `score: N - reason`"; use the replies present at your next turn, highest wins, tie to the smallest `context_k`. `fresh`: Agent `superlite:implementer` with the prime file pasted verbatim, same bytes for the whole run, and send its task only after its reply `READY`. Fan fresh agents out in one message. `evict=ID` lines on stderr: drop that agent from the pool. Busy agents are never candidates, work never queues behind an agent, and an agent past 3 tasks, 80k context or 50 idle minutes is not resumed.
+3. Task message: heading (not the task text; the plan is in the prime), Owns and files not to touch, the Review Focus categories for its files, rulings and interface names, `SUPERLITE=<path>`, the verify command (`$SL run_tests --fast PATHS`), and "reply in at most 200 words: status DONE / DONE_WITH_CONCERNS / NEEDS_CONTEXT / BLOCKED, files, test result, open questions".
+4. Handle every pending report in one turn. DONE: `$SL commit_task Tn --plan $PLAN` prints the SHA and appends the ledger; exit 1 lists out-of-scope, syntax or import problems, so send them back to the agent. DONE_WITH_CONCERNS: fix correctness concerns before review. NEEDS_CONTEXT: answer. BLOCKED: log it, re-dispatch once on a fresh agent with `model: opus`, then take the task over yourself. Update `pool.json`, rerun `next_tasks`. Do not poll; wait once.
+5. After a commit, `commit_task` has already started `probe_run --commit` in the background. When a task's seam partner is also committed (`$SL plan_tools taskgraph --plan $PLAN --format full` lists `seams`), run in background `$SL plan_tools contract --plan $PLAN --seam Ta,Tb --log .superlite/incidents.jsonl`. A pass logs `verified`. A mismatch is an incident: assign the fix to the idle owner of one side, or to a `superlite:package-reviewer`.
+6. Probe failures: `$SL incident hotspots --files <task files>` before assigning the next work. Open failures on a file go to the idle agent that owns it, with the fix and a regression test. Generated `tests/regression/` files are outside every `Owns`: rule that path into the owning task's `Owns` line so `commit_task` accepts it.
 
-Siblings share the cache only when the whole first message is byte-identical, so the task never goes in it.
+## Reviews (D16)
 
-1. **Prime file**, written once per wave to the scratch dir: a fixed preamble ("Shared context for this wave's implementers: plan and spec follow; do not act yet."), the plan text, the SPEC sections the wave needs, and the last line "Reply with exactly READY; your task follows in the next message." A plan over 25k chars is not pasted: put the plan path in the prime.
-2. **Warm.** Dispatch the first implementer alone with the prime text pasted verbatim as its prompt; wait for READY.
-3. **Fan out.** Dispatch the rest of the wave in **one message**, the same prime bytes, subagent_type, model and effort.
-4. **Assign.** In one message, SendMessage each agent its task: the task heading, files it owns and must not touch, shell and test command, rulings and interface names from earlier waves' reports (never the task text), the verify command, and the report contract: "Reply in at most 200 words: status (DONE / DONE_WITH_CONCERNS / NEEDS_CONTEXT / BLOCKED), files changed, test command and result line, open questions. No file contents or logs."
+```mermaid
+flowchart LR
+  C[commit] --> T{seam, Complexity >= 5, Review Focus risk, open incident?}
+  T -- yes --> R1[package-reviewer on that task]
+  T -- no --> W[wait for the package] --> R2[one package-reviewer, all its diffs]
+  R1 & R2 --> X[fixes + regression tests] --> K[commit_task again]
+```
 
-## Per-wave loop
+- Matching tasks get `superlite:package-reviewer` the moment they commit; dispatch it in the same message as the next dispatches. All others wait and get one review per package, once the package's remaining tasks have committed.
+- Brief: `SUPERLITE=<path>`, commit or range, spec slice, `PLAN`, files in scope, the output of `$SL incident hotspots --files ...`, and the adapter path. It reviews, fixes with regression tests, logs, and never commits. Its files are off limits to others meanwhile.
+- On its report, commit the fixes with `commit_task Tn` per reviewed task ("nothing to commit" means it found nothing). Read only the `Status:` line and open items; findings are in the log.
+- A review is never re-run on its own fixes; the final suite and final review cover them.
 
-1. Record the wave base: HEAD where the previous wave's review diff ended (before its fix commits), or the skeleton commit for wave 1. Each wave's review then covers the previous wave's fixes.
-2. Context check, prime, warm, fan out, assign.
-3. **Wait once.** Do not re-wake to poll. Handle the wave's reports in one bookkeeping message: integrate, commit, progress file, next dispatch.
-4. **Integrate from reports.** DONE proceeds. DONE_WITH_CONCERNS: correctness or scope concerns are fixed before review, observations are noted. NEEDS_CONTEXT: answer by SendMessage. BLOCKED: add context, split the task, or re-dispatch on a stronger model; never retry unchanged. Check scope with `git status --short` and `git diff --stat`. If a decision rests on one claim, read the 2-3 lines it cites.
-5. **Commit per task by explicit path** (`git add <task's files>`, then `git commit`). Only you commit; never `git add -A`.
-6. **Pipeline.** Write the diff to a scratch file (`git log --oneline` and `git diff --stat` for the range at the top, then `git diff <wave-base>..HEAD`). In **one message** dispatch `superlite:test-runner` (full suite) and one `superlite:reviewer` (diff path, plan path, the wave's task headings, "read the plan header's Global constraints", word cap 400), plus the next wave's warm prime. The suite needs a quiet tree, so send the next wave's task messages once the test-runner reports; its counts line is the evidence, and failures are findings. The reviewer runs while the next wave implements. The last wave has no wave review; the final review covers it.
-7. **Findings arrive during the next wave.** Never pre-judge or soften them. Resolve "Cannot verify from diff" items yourself; a real gap joins the findings. Send Critical and Important findings verbatim to the original implementer by SendMessage (fix messages), asking for the covering tests re-run; commit the fix by path. Minor findings go to the progress file (`Task N: minor: ...`). A finding that conflicts with the plan is yours to rule on.
-8. **Blocking rule.** If a finding is in code a next-wave task imports, hold only that task: send its task message after the fix commits (if it already started, forward the fix by SendMessage). The other tasks proceed.
-9. **At most 2 fix rounds.** No re-review per round: the next review and the final review see the fixed code, and the next suite run covers it. If Critical or Important findings remain after round 2, take the task over yourself and record a ruling.
-10. Update the progress file, mark the todo done, start the next wave. Do not pause between waves to check in.
+## Coordinator batching
+
+- One message per turn: all dispatches, a commit's reviews, background starts.
+- One turn for all pending reports; never one turn per report.
+- Longest predicted first; cap 10 concurrent; split anything predicted over 3 min.
+- Slow suites run once via `run_tests` after commit, never in an implementer's loop.
 
 ## Final review
 
-When all waves are done, pending findings are fixed, and the suite is green:
-- Write the whole-branch diff to a scratch file (`git diff <start-sha>..HEAD`).
-- Dispatch one **fresh** `superlite:reviewer` in **final mode** (model opus, effort high). It is not a fork: it must not share your blind spots. Its brief holds the diff path, the spec path, the plan path, how to import and run the code (package path and entry points), the progress file's minor and ruling lines to triage, and "final mode: re-derive the requirements from the spec, and run the robustness checklist with real probes". A 15-second final review is a failed review: if it returns in under 2 minutes with no probes listed, send it back once with "run the checklist probes".
-- If it returns findings, dispatch **one** implementer (or fix small ones yourself) with the complete list. Every robustness finding gets a regression test built from its probe input. Then test-runner once. If a Critical finding was fixed, one scoped reviewer checks just the fix diff; otherwise no re-review.
-- Anything still open is listed for the human, with a ruling.
+```mermaid
+flowchart TB
+  G[all tasks reviewed + committed] --> PK[probe_run full, then packet]
+  PK --> FR[fresh final-reviewer]
+  PK --> ST[run_tests --full]
+  FR & ST --> V{APPROVED and green?}
+  V -- no --> FX[fix them, or split if more than 5] --> ST2[one more suite]
+  V -- yes --> Z[freeze]
+```
 
-## Finish
+1. Gate: every task committed, every review reported and committed, every seam `verified`.
+2. `$SL probe_run --adapter .superlite/probes/adapter.py --out .superlite/probes/probe-results.json` (cross-package integration probes; cached, so fast). Then `$SL plan_tools packet --plan $PLAN --base <start-sha>` writes `.superlite/review-packet.md`; its header says `FAST PATH` or `REVIEW REQUIRED`.
+3. In one message: Agent `superlite:final-reviewer`, fresh, brief = `SUPERLITE=<path>` and "read .superlite/review-packet.md", nothing more; and `$SL run_tests --full` in the background. The tree is frozen while both run. It answers in one turn, no tools: `Verdict: APPROVED` (a few seconds on the fast path) or `CHANGES_REQUESTED` plus `file:line - problem - fix` lines.
+4. Red suite lines are findings. APPROVED and green: freeze. Otherwise reply "fix them" to the same reviewer (up to 5 findings; it adds a regression test per fix and reruns the covering tests). More than 5: split them by file across fresh `superlite:package-reviewer` agents in parallel. Then `commit_task Tn` per owning task, run one more `run_tests --full`, and stop; leftovers become a `Ruling:` and go in the closing message. No second review round.
 
-Collect every `Ruling:` line from the progress file and print them in your closing message under "Rulings I made", in order, each with what it costs if wrong. The list is exhaustive; it is the only way your decisions reach the human. Then invoke `superlite:finishing-a-development-branch`.
+## Freeze, rulings, finish
 
-## Common mistakes
+After a green suite: no polish, no refactors, no new probes. Archive `.superlite/incidents.jsonl` and `.superlite/progress.md` next to the plan and commit those paths by name. Run `$SL finish`; print its rulings in your closing message under "Rulings I made", each with what it costs if wrong. Then invoke `superlite:finishing-a-development-branch`.
 
-| Mistake | Do instead |
+## Stop conditions
+
+Stop and ask only for: an irreversible or destructive operation; a security-sensitive action; an outward side effect (merge, push, publish); a plan so broken that every path is a guess. Everything else is a ruling.
+
+**Unattended** (the user is away, said "decide yourself", or pre-approved): never end your turn to wait. For those four cases take the safe path: defer the outward or destructive action, read a broken plan conservatively, record the ruling, keep going. The closing message lists what you deferred.
+
+## Red flags
+
+| Thought or act | Do instead |
 |---|---|
-| Task line in the first message, or primes that differ | Identical prime bytes; task by SendMessage |
-| Fanning out before the first READY | Warm one, then send the rest |
-| Mixed model or effort inside a wave | One setting per wave |
-| Waiting on each wave review before starting the next wave | Review runs during the next wave |
-| `model` left unset (inherits Opus) | Set model and effort on every call |
-| Pasting task text or skill text into a brief | Task heading; agents have their rules |
-| Respawning to fix | SendMessage the original implementer |
-| Polling or one wake per report | One bookkeeping message per wave |
-| Dispatching without the `Est. context` check | Split above 80k, merge below the floor |
-| Running the suite yourself | test-runner; its counts line is the evidence |
-| `git add -A`, or implementers committing | Coordinator commits by explicit path |
-| Asking "should I continue?" between waves | Apply the four stop conditions only |
+| Typing the prime or a fresh agent's task before READY | `build_prime`, paste verbatim, wait for READY |
+| Sending work to a busy agent, or "after T3" | `assign`; `fresh` when none is eligible |
+| Committing by hand or staging everything | `commit_task Tn` |
+| Running the suite yourself, or a test-runner agent | `run_tests`; read its one line |
+| Reviewing every task | Selective per task, else per package |
+| Final reviewer browsing or probing | Packet only; probes ran earlier |
+| Killing by image name | By PID only (a hook blocks the rest) |
+| Fix rounds, polish after green | One fix pass, one suite, freeze |
+| Asking "should I continue?" | Only the four stop conditions |
