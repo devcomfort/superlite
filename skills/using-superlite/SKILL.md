@@ -21,7 +21,7 @@ After approval, stop only for destructive, outward-facing or security-sensitive 
 - claim done -> superlite:verification-before-completion
 - finish -> superlite:finishing-a-development-branch
 
-**Lean toward orchestration:** for a non-trivial build, split by interface and dispatch subagents. Build inline only when small (a few files, one chain), and say so.
+**Builds with 2+ tasks always run through `superlite:subagent-driven-development`;** load it before writing the plan. Never use `general-purpose` agents for build or review work. Build inline only when small (a few files, one chain), and say so.
 
 **Final review always applies.** A non-trivial build ends with a fresh `superlite:final-reviewer` reading the review packet built from the logs, before you claim done.
 

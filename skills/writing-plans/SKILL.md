@@ -7,7 +7,13 @@ description: Use when you have an approved design or requirements for a multi-st
 
 A plan is a set of contracts Sonnet implementers can execute without asking questions, and also the input to the 0.3 engine: a machine-readable task graph, interface stubs, per-task time predictions, a predicted schedule and probe plans. Write it so scripts can parse it. Code the implementer would write anyway burns Opus time and invites transcription errors.
 
+Any build with 2+ tasks runs through `superlite:subagent-driven-development`: load it before writing the plan. Never use `general-purpose` agents for build or review work.
+
 Save to `docs/plans/YYYY-MM-DD-<topic>.md`. When called from `superlite:brainstorming`, append to its doc instead. If the spec covers independent subsystems, write one plan per subsystem.
+
+## Section by section
+
+Write and approve the plan one section at a time; dispatch starts as each is approved, while the next is discussed. Mark each unapproved task block `**Status:** draft` (none, or `approved`, once approved). `next_tasks` and `dispatch` skip draft tasks and their dependents; lint and `taskgraph` accept partial plans (draft tasks may keep placeholders, approved ones may not). Approve a section only when its Produces/Consumes interfaces are frozen; a later change to an interface an approved task consumes becomes a follow-up fix task, not a restart. Lint, schedule and stubs run per section. With a pre-approved run, still approve section by section: dispatch the first section once written and linted.
 
 ## Plan shape, in this order
 
@@ -153,7 +159,7 @@ Run it yourself, not as a subagent. Fix in place, with no re-review.
 
 ## Handoff
 
-Do not ask about an execution method. The default is `superlite:subagent-driven-development`, which has its own inline mode for small plans. If called from brainstorming, return to it for the single approval. Otherwise give the path and wait for the go-ahead, unless the user pre-approved, in which case record any open choice as `Ruling: ...` and proceed.
+Do not ask about an execution method: it is `superlite:subagent-driven-development` (its inline mode covers small plans). If called from brainstorming, return to it for the single approval. Otherwise give the path and wait for the go-ahead, unless the user pre-approved, in which case record any open choice as `Ruling: ...` and proceed.
 
 ## Red flags
 

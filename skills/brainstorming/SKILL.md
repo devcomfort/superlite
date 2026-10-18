@@ -41,8 +41,8 @@ Write what you understood (separate what the user said from your assumptions), t
 
 1. Write ONE doc, `docs/plans/YYYY-MM-DD-<topic>.md`: the design above, then the plan. Invoke `superlite:writing-plans` for the plan half and append it to the same file. If the user named a different location, use theirs.
 2. Self-review inline: placeholders, contradictions, scope (one plan, or decompose?), and requirements that could be read two ways. Fix them in place. No review loop, no subagent.
-3. Give the path and ask for approval. One question, not one per section. Show the plan's predicted schedule line and any `MISSED TARGET` warning with its `Ruling:` in it. Run `bash <skill-dir>/../subagent-driven-development/scripts/sl graphify_gate`; when it reports `needs_install: true`, add the Graphify install opt-in (`uv tool install graphifyy`) to that same question. Never install without a yes.
-4. On approval, invoke `superlite:subagent-driven-development`.
+3. Give the path and ask for approval section by section: one question per section as it is written, batching that section's open choices; dispatch approved sections while the rest is discussed. Show the plan's predicted schedule line and any `MISSED TARGET` warning with its `Ruling:` in it. Run `bash <skill-dir>/../subagent-driven-development/scripts/sl graphify_gate`; when it reports `needs_install: true`, add the Graphify install opt-in (`uv tool install graphifyy`) to that same question. Never install without a yes.
+4. On approval, invoke `superlite:subagent-driven-development`. When `writing-plans` approves the plan section by section, hand it each approved section as it clears.
 
 Until approval, only read-only exploration is allowed. No scaffolding, no dependency installs, no product code. Approval covers the doc as presented. If the user changes the design, revise and re-present once.
 
