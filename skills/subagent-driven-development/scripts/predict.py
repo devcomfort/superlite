@@ -221,8 +221,12 @@ def load_observations(paths: list[str]) -> list[dict]:  # O(S) total input + glo
                 if loc is None or actual is None:  # O(1)
                     continue  # O(1)
                 slow = r.get("tests") == "slow" or r.get("slow") is True  # O(1)
+                ov = _num(r, "start_overhead_min")  # O(1)
+                if ov is None:  # O(1)
+                    s_ov = _num(r, "start_overhead_s", "agent_start_overhead_s", "overhead_s")  # O(1)
+                    ov = s_ov / 60 if s_ov is not None else None  # O(1)
                 obs.append({"components": _num(r, "components") or 1.0, "loc": loc, "slow": bool(slow),  # O(1)
-                            "model": r.get("model"), "actual": actual})  # O(1)
+                            "model": r.get("model"), "actual": actual, "overhead": ov})  # O(1)
     return obs  # O(1)
 
 
@@ -251,6 +255,27 @@ def mean_abs_error(obs: list[dict], models: dict, coef: dict) -> float:  # O(N*M
     return sum(errs) / len(errs)  # O(N)
 
 
+def _percentile(xs: list[float], q: float) -> float:  # O(N log N)
+    xs = sorted(xs)  # O(N log N)
+    pos = (len(xs) - 1) * q  # O(1)
+    lo = int(math.floor(pos))  # O(1)
+    hi = min(lo + 1, len(xs) - 1)  # O(1)
+    return xs[lo] + (xs[hi] - xs[lo]) * (pos - lo)  # O(1)
+
+
+def refit_band(obs: list[dict], coef: dict) -> dict:  # O(N log N)
+    """high_min = p90 of observed actual task minutes, clamped to [4, 8], rounded to 0.5;
+    low_min = 2.5 x the median agent start overhead when the results carry one, else unchanged."""
+    band = dict(coef.get("size_band") or {"low_min": 1.5, "high_min": 6.0})  # O(1)
+    p90 = _percentile([o["actual"] for o in obs], 0.9)  # O(N log N)
+    band["high_min"] = round(min(8.0, max(4.0, p90)) * 2) / 2  # O(1)
+    over = sorted(o["overhead"] for o in obs if o.get("overhead") is not None)  # O(N log N)
+    if over:  # O(1)
+        med = _percentile(over, 0.5)  # O(N)
+        band["low_min"] = round(2.5 * med, 2)  # O(1)
+    return band  # O(1)
+
+
 def refit(obs: list[dict], models: dict, coef: dict, ridge: float = 0.25) -> tuple[dict, dict]:  # O(N*M + N*k^2)
     if len(obs) < 4:  # O(1)
         raise PredictError(f"need at least 4 usable observations to refit, got {len(obs)}")  # O(1)
@@ -269,6 +294,7 @@ def refit(obs: list[dict], models: dict, coef: dict, ridge: float = 0.25) -> tup
     new = json.loads(json.dumps(coef))  # O(size of coef) JSON round trip
     new["time"] = {"base_min": round(sol[0], 4), "per_component_min": round(sol[1], 4),  # O(1)
                    "per_loc_min": round(sol[2] / 100, 6), "slow_tests_min": round(sol[3], 4)}  # O(1)
+    new["size_band"] = refit_band(obs, coef)  # O(N log N)
     before = mean_abs_error(obs, models, coef)  # O(N*M)
     after = mean_abs_error(obs, models, new)  # O(N*M)
     new["fit"] = {"n": len(obs), "mae_before_min": round(before, 4), "mae_after_min": round(after, 4)}  # O(1)
@@ -300,7 +326,7 @@ def main(argv=None) -> int:  # O(S + n*M + N*M) plus file I/O
             dest = Path(args.out or args.coef or CONFIG_DIR / "predictor.json")  # O(1)
             if not args.dry_run:  # O(1)
                 dest.write_text(json.dumps(new, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")  # O(1) file write
-            print(json.dumps({"fit": fit, "time": new["time"], "written": None if args.dry_run else str(dest)}, indent=2))  # O(1)
+            print(json.dumps({"fit": fit, "time": new["time"], "size_band": new["size_band"], "written": None if args.dry_run else str(dest)}, indent=2))  # O(1)
             return 0  # O(1)
         if not args.plan:  # O(1)
             ap.error("--plan is required (or use --refit)")  # O(1)

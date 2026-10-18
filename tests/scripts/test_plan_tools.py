@@ -303,12 +303,13 @@ def test_lint_placeholder_inside_code_fence_is_ignored(tmp_path):
     assert pt("lint", "--plan", p).returncode == 0
 
 
-def test_lint_flags_task_over_cap_and_mergeable(tmp_path):
-    p = make_plan(tmp_path, [{"id": "T1", "time": 3.6}, {"id": "T2", "time": 0.5, "ctx": 30}])
+def test_lint_size_band_errors_above_high_and_notes_below_low(tmp_path):
+    p = make_plan(tmp_path, [{"id": "T1", "time": 6.5}, {"id": "T2", "time": 0.5, "ctx": 30}])
     cp = pt("lint", "--plan", p)
     assert cp.returncode == 1
-    assert "T1: predicted 3.6 min is over the 3-min cap" in cp.out
-    assert "T2 is mergeable" in cp.out
+    assert "SIZE: T1 predicted 6.5 min > 6 max; split it along its components" in cp.out
+    assert "NOTE: T2 predicted 0.5 min < 1.5; consider merging with a related task" in cp.out
+    assert "mergeable" not in cp.out and "-min cap" not in cp.out
 
 
 def test_lint_flags_consumes_mismatch(tmp_path):
@@ -537,8 +538,8 @@ def test_predictor_wins_over_stated_time_when_features_present(tmp_path):
 
 
 def test_lint_cap_uses_predicted_time_over_stated(tmp_path):
-    # stated 5 min would break the 3-min cap, but the features predict ~2.5
-    p = make_plan(tmp_path, [dict(id="T1", time=5, **SKILL_BIG)])
+    # stated 7 min would break the 6-min band, but the features predict ~2.5
+    p = make_plan(tmp_path, [dict(id="T1", time=7, **SKILL_BIG)])
     assert pt("lint", "--plan", p).returncode == 0
     assert pt("lint", "--plan", p, "--stated").returncode == 1
 

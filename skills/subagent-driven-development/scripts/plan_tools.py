@@ -29,10 +29,10 @@ CONFIG_DIR = SCRIPT_DIR.parent / "config"  # O(1)
 REVIEW_COMMANDS = ("adapter", "packet", "contract")  # O(1)
 IMPLEMENTER_PREFIX = 18000  # O(1)
 CTX_CEILING = 80000  # O(1)
-MERGE_MIN_VARIABLE = 18000  # O(1)
-MERGE_MIN_MINUTES = 1.0  # O(1)
+MERGE_MIN_VARIABLE = 18000  # O(1) taskgraph advisory only
+MERGE_MIN_MINUTES = 1.0  # O(1) taskgraph advisory only
 DEFAULT_CAP = 10  # O(1)
-DEFAULT_MAX_TASK_MIN = 3.0  # O(1)
+DEFAULT_SIZE_BAND = {"low_min": 1.5, "high_min": 6.0}  # O(1) used when predictor.json has no size_band
 DEFAULT_MAX_CHARS = 15000  # O(1)
 
 TASK_ID = r"T\d+[a-z]*"  # O(1)
@@ -1018,14 +1018,38 @@ def not_mechanical_reasons(task: Task, focus: dict[str, set[str]]) -> list[str]:
     return why  # O(1)
 
 
+class Issue(str):  # O(1) a lint message that also records which tasks it is about
+    """A str, so callers and tests that print or match messages are unaffected. `tasks` names the
+    subject tasks structurally; `scope` is "task" (blocks those tasks) or "plan" (never blocks a
+    stable task by itself); `chain` marks a flagged CHAIN, whose member tasks are unstable."""
+    tasks: tuple
+    scope: str
+    chain: bool
+
+    def __new__(cls, msg: str, tasks=(), scope: str = "task", chain: bool = False):  # O(s)
+        o = super().__new__(cls, msg)  # O(s)
+        o.tasks, o.scope, o.chain = tuple(tasks), scope, chain  # O(t)
+        return o  # O(1)
+
+
+def size_band(coef: dict, args=None) -> tuple[float, float]:  # O(1)
+    b = coef.get("size_band") or {}  # O(1)
+    low = float(b.get("low_min", DEFAULT_SIZE_BAND["low_min"]))  # O(1)
+    high = float(b.get("high_min", DEFAULT_SIZE_BAND["high_min"]))  # O(1)
+    override = getattr(args, "max_task_min", None)  # O(1)
+    if override is not None:  # O(1)
+        high = float(override)  # O(1)
+    return low, high  # O(1)
+
+
 def lint_plan(plan: Plan, args) -> tuple[list[str], list[str]]:  # O(n^2*k*s + e*n + C*P + n*p + merge/simulate) total
     issues: list[str] = []  # O(1)
     warnings: list[str] = []  # O(1)
     ids = [t.id for t in plan.tasks]  # O(n)
     for tid in sorted({i for i in ids if ids.count(i) > 1}, key=nkey):  # O(n^2) ids.count per distinct id; hotspot
-        issues.append(f"duplicate task heading {tid}")  # O(1)
+        issues.append(Issue(f"duplicate task heading {tid}", [tid]))  # O(1)
     if not plan.tasks:  # O(1)
-        issues.append("no task headings (### Tn ...) found")  # O(1)
+        issues.append(Issue("no task headings (### Tn ...) found", scope="plan"))  # O(1)
 
     # placeholders (outside code fences and draft task blocks)
     draft_lines: set[int] = set()  # O(1)
@@ -1037,7 +1061,8 @@ def lint_plan(plan: Plan, args) -> tuple[list[str], list[str]]:  # O(n^2*k*s + e
             continue  # O(1)
         for pat, label in PLACEHOLDERS:  # O(P) iterations, P=7 patterns
             if re.search(pat, ln, re.I):  # O(s) regex per pattern
-                issues.append(f"placeholder {label} at line {i + 1}")  # O(1)
+                owner = [t.id for t in plan.tasks if t.line <= i + 1 <= t.line + t.text.count("\n") + 1]  # O(n)
+                issues.append(Issue(f"placeholder {label} at line {i + 1}", owner, "task" if owner else "plan"))  # O(1)
 
     for t in plan.tasks:  # O(n) iterations
         if not t.has_features and t.stated_time is None:  # O(k*s)
@@ -1049,10 +1074,10 @@ def lint_plan(plan: Plan, args) -> tuple[list[str], list[str]]:  # O(n^2*k*s + e
     try:  # O(1)
         graph = parse_taskgraph(plan)  # O(L*s + R*M + e log n)
     except PlanError as exc:  # O(1)
-        issues.append(f"taskgraph: {exc}")  # O(1)
+        issues.append(Issue(f"taskgraph: {exc}", scope="plan"))  # O(1)
     for t in plan.tasks:  # O(n) iterations
         if not t.owns:  # O(k*s*A)
-            issues.append(f"{t.id}: no **Owns:** line")  # O(1)
+            issues.append(Issue(f"{t.id}: no **Owns:** line", [t.id]))  # O(1)
     if graph:  # O(1)
         anc = ancestors(graph)  # O(e*n)
         for a_i, a in enumerate(plan.tasks):  # O(n) iterations
@@ -1060,7 +1085,7 @@ def lint_plan(plan: Plan, args) -> tuple[list[str], list[str]]:  # O(n^2*k*s + e
                 if a.id in graph and b.id in graph and a.id not in anc[b.id] and b.id not in anc[a.id]:  # O(1)
                     shared = sorted(set(a.owns) & set(b.owns))  # O(k*s*A) re-parses owns per pair; hotspot
                     if shared:  # O(1)
-                        issues.append(f"{a.id} and {b.id} can run in parallel but both own {', '.join(shared)}")  # O(1)
+                        issues.append(Issue(f"{a.id} and {b.id} can run in parallel but both own {', '.join(shared)}", [a.id, b.id]))  # O(1)
 
     # Consumes / Produces consistency
     produced: dict[str, list[tuple[str, dict]]] = {}  # O(1)
@@ -1081,7 +1106,7 @@ def lint_plan(plan: Plan, args) -> tuple[list[str], list[str]]:  # O(n^2*k*s + e
                 cands = [c for c in cands if c[0] in refs]  # O(cands*refs)
             if not cands:  # O(1)
                 where = f" from {'/'.join(refs)}" if refs else ""  # O(1)
-                issues.append(f"{t.id} consumes {sig['name']}{where}, but no Produces line defines it")  # O(1)
+                issues.append(Issue(f"{t.id} consumes {sig['name']}{where}, but no Produces line defines it", [t.id]))  # O(1)
                 continue  # O(1)
             ok = False  # O(1)
             for pid, psig in cands:  # O(cands) iterations
@@ -1092,19 +1117,19 @@ def lint_plan(plan: Plan, args) -> tuple[list[str], list[str]]:  # O(n^2*k*s + e
                     break  # O(1)
             if not ok:  # O(1)
                 pid, psig = cands[0]  # O(1)
-                issues.append(f"{t.id} consumes {sig['name']}({sig['args']}) but {pid} produces "  # O(s)
-                              f"{psig['name']}({psig['args']})" + (f" -> {psig['ret']}" if psig["ret"] else ""))  # O(1)
+                issues.append(Issue(f"{t.id} consumes {sig['name']}({sig['args']}) but {pid} produces "  # O(s)
+                                    f"{psig['name']}({psig['args']})" + (f" -> {psig['ret']}" if psig["ret"] else ""), [t.id]))  # O(1)
 
     # diagrams
     for b in plan.mermaid_blocks():  # O(b) iterations
         err = check_diagram(b)  # O(B)
         if err:  # O(1)
-            issues.append(f"mermaid block at line {b.start + 1}: {err}")  # O(1)
+            issues.append(Issue(f"mermaid block at line {b.start + 1}: {err}", scope="plan"))  # O(1)
 
     # size caps
     max_chars = getattr(args, "max_chars", DEFAULT_MAX_CHARS)  # O(1)
     if len(plan.text) > max_chars:  # O(1)
-        issues.append(f"plan is {len(plan.text)} chars, over the {max_chars} cap")  # O(1)
+        issues.append(Issue(f"plan is {len(plan.text)} chars, over the {max_chars} cap", scope="plan"))  # O(1)
     predict = _predict()  # O(1)
     models = predict.load_models(getattr(args, "models", None))  # O(config size) file I/O
     coef = predict.load_coef(getattr(args, "coef", None))  # O(config size) file I/O
@@ -1112,27 +1137,27 @@ def lint_plan(plan: Plan, args) -> tuple[list[str], list[str]]:  # O(n^2*k*s + e
         c, src = effective_context(t, models, coef, bool(getattr(args, "stated", False)))  # O(k*s + p)
         if c is not None and c > CTX_CEILING:  # O(1)
             what = "Est. context" if src == "stated" else "predicted context"  # O(1)
-            issues.append(f"{t.id}: {what} {c // 1000}k is over the {CTX_CEILING // 1000}k ceiling; split it")  # O(1)
+            issues.append(Issue(f"{t.id}: {what} {c // 1000}k is over the {CTX_CEILING // 1000}k ceiling; split it", [t.id]))  # O(1)
         if src == "predicted" and t.stated_context:  # O(1)
             if abs(t.stated_context - c) / c > 0.25:  # O(1)
                 warnings.append(f"NOTE: {t.id} states Est. context {t.stated_context // 1000}k but the predictor "  # O(s)
                                 f"says {c // 1000}k (over 25% apart); the predicted value is used")  # O(1)
 
-    # mergeable / over cap, and the time-target warning
+    # size band (predicted minutes), CHAIN and the time-target warning
+    low_min, high_min = size_band(coef, args)  # O(1)
     miss: str | None = None  # O(1)
     if graph is not None and not find_cycle(graph):  # O(n+e) redundant, parse_taskgraph already checked
         try:  # O(1)
             times, _ = effective_times(plan, graph, args)  # O(n*p) recomputed in schedule_report
         except PlanError as exc:  # O(1)
-            issues.append(str(exc))  # O(1)
+            issues.append(Issue(str(exc), scope="plan"))  # O(1)
             times = None  # O(1)
         if times is not None:  # O(1)
             for t in sorted(times, key=nkey):  # O(n log n)
-                if times[t] > args.max_task_min + 1e-9:  # O(1)
-                    issues.append(f"{t}: predicted {times[t]:.1f} min is over the {args.max_task_min:.0f}-min cap; split it along its components")  # O(1)
-            for m in mergeable_tasks(plan, graph, times, args):  # O(n*p + n*(n+e) + n^2*k*s)
-                to = f"merge with {m['merge_with']}" if m["merge_with"] else "no safe merge partner"  # O(1)
-                issues.append(f"{m['task']} is mergeable ({'; '.join(m['reasons'])}); {to}")  # O(1)
+                if times[t] > high_min + 1e-9:  # O(1)
+                    issues.append(Issue(f"SIZE: {t} predicted {times[t]:.1f} min > {high_min:g} max; split it along its components", [t]))  # O(1)
+                elif times[t] < low_min - 1e-9 and t in plan.by_id:  # O(1)
+                    warnings.append(f"NOTE: {t} predicted {times[t]:.1f} min < {low_min:g}; consider merging with a related task")  # O(1)
             rep = schedule_report(plan, args)  # O(n*(n+e) + n*p) re-parses graph and times
             cp, ctimes = rep["critical_path"], [rep["times"][t] for t in rep["critical_path"]]  # O(n) draft tasks are not in rep
             if len(cp) >= 3 and ctimes and sum(ctimes) > 2.5 * max(ctimes) + 1e-9:  # O(n)
@@ -1141,9 +1166,9 @@ def lint_plan(plan: Plan, args) -> tuple[list[str], list[str]]:  # O(n^2*k*s + e
                 if ruling:  # O(1)
                     warnings.append(f"NOTE: {ruling.group(0).strip()}")  # O(1)
                 else:  # O(1)
-                    issues.append(f"CHAIN: critical path {' -> '.join(cp)} is {sum(ctimes):.1f} min, {ratio:.1f}x the longest task "  # O(n)
-                                  f"({max(ctimes):.1f} min); stub the interfaces so consumers test against fakes, "  # O(1)
-                                  "or add Ruling: sequential - <why>")  # O(1)
+                    issues.append(Issue(f"CHAIN: critical path {' -> '.join(cp)} is {sum(ctimes):.1f} min, {ratio:.1f}x the longest task "  # O(n)
+                                        f"({max(ctimes):.1f} min); stub the interfaces so consumers test against fakes, "  # O(1)
+                                        "or add Ruling: sequential - <why>", cp, "plan", chain=True))  # O(1)
             if rep["target_min"] is not None and not rep["target_met"]:  # O(1)
                 miss = (f"MISSED TARGET: predicted {rep['total_min']:.1f} min vs target {rep['target_min']:.1f} min "  # O(1)
                         f"— critical path {' → '.join(rep['critical_path'])}")  # O(1)
@@ -1153,8 +1178,8 @@ def lint_plan(plan: Plan, args) -> tuple[list[str], list[str]]:  # O(n^2*k*s + e
     # no Opus implementers (approved tasks only)
     for t in plan.tasks:  # O(n) iterations
         if t.status != "draft" and re.search(r"\bopus\b", t.field_text("model"), re.I):  # O(k*s)
-            issues.append(f"OPUS-TASK: {t.id} uses Model: opus; split it, or leave it on Sonnet and let a fixer-opus "  # O(1)
-                          "handle what Sonnet can't")  # O(1)
+            issues.append(Issue(f"OPUS-TASK: {t.id} uses Model: opus; split it, or leave it on Sonnet and let a fixer-opus "  # O(1)
+                                "handle what Sonnet can't", [t.id]))  # O(1)
 
     # Kind / Model: haiku is for mechanical tasks only (approved tasks only)
     focus = review_focus_cases(plan)  # O(L)
@@ -1164,17 +1189,17 @@ def lint_plan(plan: Plan, args) -> tuple[list[str], list[str]]:  # O(n^2*k*s + e
         feats = t.explicit_features  # O(k*s)
         kind = feats.get("kind", "design")  # O(1)
         if re.search(r"\bhaiku\b", feats.get("model") or "", re.I) and kind != "mechanical":  # O(1)
-            issues.append(f"KIND: {t.id} uses Model: haiku but is not Kind: mechanical")  # O(1)
+            issues.append(Issue(f"KIND: {t.id} uses Model: haiku but is not Kind: mechanical", [t.id]))  # O(1)
         if kind == "mechanical":  # O(1)
             why = not_mechanical_reasons(t, focus)  # O(k*s + pkgs)
             if why:  # O(1)
-                issues.append(f"KIND: {t.id} is not mechanical: {'; '.join(why)}")  # O(1)
+                issues.append(Issue(f"KIND: {t.id} is not mechanical: {'; '.join(why)}", [t.id]))  # O(1)
 
     # SPEC coverage
     if getattr(args, "spec", None):  # O(1)
         sp = Path(args.spec)  # O(1)
         if not sp.is_file():  # O(1)
-            issues.append(f"spec not found: {args.spec}")  # O(1)
+            issues.append(Issue(f"spec not found: {args.spec}", scope="plan"))  # O(1)
         else:  # O(1)
             stext = sp.read_text(encoding="utf-8-sig").replace("\r\n", "\n")  # O(S) file read
             sflags, _ = scan_fences(stext.split("\n"))  # O(S)
@@ -1193,11 +1218,129 @@ def lint_plan(plan: Plan, args) -> tuple[list[str], list[str]]:  # O(n^2*k*s + e
                 if not covered and num:  # O(1)
                     covered = bool(re.search(rf"(?:§|section\s+|sec\.\s*)\s*{re.escape(num)}\b", plan_l))  # O(C) regex
                 if not covered:  # O(1)
-                    issues.append(f"SPEC section {raw!r} has no task")  # O(1)
+                    issues.append(Issue(f"SPEC section {raw!r} has no task", scope="plan"))  # O(1)
     return issues, warnings  # O(1)
 
 
+def sig_text(item: str) -> str:  # O(s)
+    sig = parse_signature(item)  # O(s)
+    if not sig:  # O(1)
+        return re.sub(r"\s+", " ", strip_ticks(item)).strip()  # O(s)
+    return f"{sig['name']}({sig['args']})" + (f" -> {sig['ret']}" if sig["ret"] else "")  # O(s)
+
+
+def task_interface(task: Task) -> dict:  # O(k*s)
+    return {"consumes": [sig_text(i) for i in task.consumes], "produces": [sig_text(i) for i in task.produces]}  # O(k*s)
+
+
+def stable_partition(plan: Plan, issues: list, warnings: list[str]):  # O(n + issues + e*n)
+    """STABLE: no task-scoped issue of its own, no edge to an unstable task, not on a flagged CHAIN.
+    Issues carry their subject tasks (Issue.tasks); plan-scoped ones never block a stable task."""
+    ids = [t.id for t in plan.tasks]  # O(n)
+    reasons: dict[str, list[str]] = {i: [] for i in ids}  # O(n)
+    plan_issues: list[str] = []  # O(1)
+    for iss in list(issues) + [w for w in warnings if w.startswith("MISSED TARGET")]:  # O(issues)
+        scope = getattr(iss, "scope", "plan")  # O(1)
+        subj = [x for x in getattr(iss, "tasks", ()) if x in reasons]  # O(t)
+        if scope == "plan" or not subj:  # O(1)
+            plan_issues.append(str(iss))  # O(1)
+        if getattr(iss, "chain", False):  # O(1)
+            for x in subj:  # O(t)
+                reasons[x].append("on flagged CHAIN")  # O(1)
+        elif scope == "task":  # O(1)
+            for x in subj:  # O(t)
+                reasons[x].append(str(iss))  # O(1)
+    try:  # O(1)
+        graph = parse_taskgraph(plan)  # O(L*s + e log n)
+    except PlanError:  # O(1)
+        graph = {}  # O(1)
+    changed = True  # O(1)
+    while changed:  # O(n) rounds worst case
+        changed = False  # O(1)
+        for t in ids:  # O(n)
+            bad = [d for d in graph.get(t, []) if reasons.get(d)]  # O(deg)
+            if bad and not any(r.startswith("depends on unstable") for r in reasons[t]):  # O(r)
+                reasons[t].append("depends on unstable " + ", ".join(bad))  # O(deg)
+                changed = True  # O(1)
+    stable = [t for t in ids if not reasons[t]]  # O(n)
+    fix = [{"task": t, "reasons": reasons[t]} for t in ids if reasons[t]]  # O(n)
+    return stable, fix, plan_issues  # O(1)
+
+
+def stable_root(plan_path: str) -> Path:  # O(1) directory that holds .superlite/
+    root = Path(plan_path).resolve().parent  # O(1)
+    if root.name == ".superlite":  # O(1)
+        return root.parent  # O(1)
+    if root.name == "plans" and root.parent.name == "docs":  # O(1)
+        return root.parent.parent  # O(1)
+    return root  # O(1)
+
+
+def dispatched_tasks(sl_dir: Path) -> set[str]:  # O(c + pool)
+    out: set[str] = set()  # O(1)
+    ledger = sl_dir / "progress.md"  # O(1)
+    if ledger.is_file():  # O(1)
+        out.update(re.findall(rf"^- commit ({TASK_ID})\b", ledger.read_text(encoding="utf-8", errors="replace"), re.M))  # O(c)
+    pool = sl_dir / "pool.json"  # O(1)
+    if pool.is_file():  # O(1)
+        try:  # O(1)
+            for ag in json.loads(pool.read_text(encoding="utf-8")).get("agents", []):  # O(a)
+                if ag.get("current"):  # O(1)
+                    out.add(ag["current"])  # O(1)
+        except (ValueError, AttributeError):  # O(1)
+            pass  # O(1)
+    return out  # O(1)
+
+
+def _iface_str(i: dict) -> str:  # O(s)
+    return f"Produces: {', '.join(i.get('produces') or []) or '-'}; Consumes: {', '.join(i.get('consumes') or []) or '-'}"  # O(s)
+
+
+def cmd_lint_stable(args) -> int:  # O(lint + n*k*s)
+    plan = Plan.load(args.plan)  # O(C+L)
+    issues, warnings = lint_plan(plan, args)  # O(lint)
+    stable, fix, plan_issues = stable_partition(plan, issues, warnings)  # O(n + e*n)
+    sl_dir = stable_root(args.plan) / ".superlite"  # O(1)
+    out = sl_dir / "stable.json"  # O(1)
+    interfaces = {t: task_interface(plan.by_id[t]) for t in stable if t in plan.by_id}  # O(n*k*s)
+    old: dict = {}  # O(1)
+    if out.is_file():  # O(1)
+        try:  # O(1)
+            old = json.loads(out.read_text(encoding="utf-8"))  # O(S)
+        except ValueError:  # O(1)
+            old = {}  # O(1)
+    old_if = old.get("interfaces") or {}  # O(1)
+    frozen_ids = set(old.get("stable") or []) | dispatched_tasks(sl_dir)  # O(c)
+    frozen: list[str] = []  # O(1)
+    for t in sorted(frozen_ids, key=nkey):  # O(n log n)
+        if t not in old_if or t not in plan.by_id:  # O(1)
+            continue  # O(1)
+        new_i = task_interface(plan.by_id[t])  # O(k*s)
+        if new_i != old_if[t]:  # O(1)
+            frozen.append(f"FROZEN: {t} interface changed after dispatch: {_iface_str(old_if[t])} -> {_iface_str(new_i)}; add a follow-up fix task")  # O(s)
+            interfaces[t] = old_if[t]  # keep the old entry | O(1)
+            if t not in stable:  # O(n)
+                stable.append(t)  # O(1)
+                fix = [f for f in fix if f["task"] != t]  # O(n)
+    stable.sort(key=nkey)  # O(n log n)
+    plan_issues = list(plan_issues) + frozen  # O(1)
+    print("STABLE: " + " ".join(stable))  # O(n)
+    print("FIX:")  # O(1)
+    for f in fix:  # O(n)
+        print(f"  {f['task']}: " + " | ".join(f["reasons"]))  # O(r)
+    for pi in plan_issues:  # O(issues)
+        print(f"  PLAN: {pi}")  # O(1)
+    for w in warnings:  # O(w)
+        if w.startswith(("NOTE: ", "WARNING")):  # O(1)
+            print(w)  # O(1)
+    out.parent.mkdir(parents=True, exist_ok=True)  # O(1)
+    out.write_text(json.dumps({"stable": stable, "fix": fix, "plan_issues": plan_issues, "interfaces": interfaces}, indent=1), encoding="utf-8")  # O(S)
+    return 0 if stable and not frozen else 1  # O(1)
+
+
 def cmd_lint(args) -> int:  # O(lint) total
+    if getattr(args, "stable", False):
+        return cmd_lint_stable(args)
     plan = Plan.load(args.plan)  # O(C+L)
     issues, warnings = lint_plan(plan, args)  # O(lint)
     for w in warnings:  # O(w) iterations
@@ -1255,8 +1398,9 @@ def build_parser():  # O(1) total
     p.add_argument("--cap", type=int, default=DEFAULT_CAP)  # O(1)
     p.add_argument("--target-min", type=float, default=None)  # O(1)
     p.add_argument("--tail-min", type=float, default=None)  # O(1)
-    p.add_argument("--max-task-min", type=float, default=DEFAULT_MAX_TASK_MIN)  # O(1)
+    p.add_argument("--max-task-min", type=float, default=None, help="override size_band.high_min for this run")  # O(1)
     p.add_argument("--max-chars", type=int, default=DEFAULT_MAX_CHARS)  # O(1)
+    p.add_argument("--stable", action="store_true", help="partition tasks into STABLE and FIX; writes .superlite/stable.json")
     add_predictor_args(p)  # O(1)
     p.set_defaults(func=cmd_lint)  # O(1)
 

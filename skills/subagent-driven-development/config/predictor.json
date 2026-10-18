@@ -31,6 +31,10 @@
     "output_per_call": 120,
     "cache_ttl": "5m"
   },
+  "size_band": {
+    "low_min": 1.5,
+    "high_min": 6.0
+  },
   "schedule": {
     "tail_min": 3.5
   },
