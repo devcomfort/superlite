@@ -17,9 +17,13 @@ Save to `docs/plans/YYYY-MM-DD-<topic>.md`. When called from `superlite:brainsto
 
 ## Write for the split
 
-You are not writing a document to be approved whole. You are writing a queue that starts building while you write. Lint will split what you write into stable tasks, which build now, and fix tasks, which wait. Write so the first part you write is stable on its own.
+**Who decides sets the mode.**
+- **A human approves** (the default): the plan is a document approved as a whole. Write it complete, in the order below (producers first, task blocks complete and sized for the band), give the path and ask for approval. Nothing dispatches before the yes. On approval, run `lint --stable` and dispatch the stable set at once.
+- **Decisions are delegated** (the user pre-approved, said "decide yourself", or an agent runs the session): write a queue that starts building while you write. Lint splits what you write into stable tasks, which build now, and fix tasks, which wait. Follow all six rules, including chunked writes, so the first chunk is stable on its own. Record open choices as `Ruling:` lines.
 
-1. **Write in chunks, not one Write.** Chunk 1 is the header, Global constraints, the main diagram with its `%% taskgraph`, and the producer tasks: the ones others consume, with no incoming edges. Then run `schedule --insert` and `lint --stable` so they dispatch. Append each later chunk with an edit, extending the taskgraph, and re-lint. Never rewrite a chunk that has dispatched.
+In both modes, write for the split:
+
+1. **Write in chunks, not one Write** (delegated mode; with a human approver, write the whole plan in this same order). Chunk 1 is the header, Global constraints, the main diagram with its `%% taskgraph`, and the producer tasks: the ones others consume, with no incoming edges. Then run `schedule --insert` and `lint --stable` so they dispatch. Append each later chunk with an edit, extending the taskgraph, and re-lint. Never rewrite a chunk that has dispatched.
 2. **Producers first, with exact `Produces` lines.** Lint resolves each `Consumes` against some task's `Produces` line, so write producers before their consumers: exact name, parameter types and return type. A consumer is then stable the moment it's written, even while its producer is still building or being fixed.
 3. **Finish each task block before starting the next.** No placeholders, and every field filled. A half-written task is a fix task, and so is everything with an edge to it.
 4. **Size each task for the band as you write it.** Fill Components, LOC owned and Tests honestly, and aim for 2-5 min predicted. Something that looks over 6 min is two blocks from the start (server / UI, engine / CLI), not one block that lint sends back.
