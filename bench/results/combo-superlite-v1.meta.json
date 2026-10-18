@@ -1,0 +1,12 @@
+{
+  "arm": "superlite",
+  "rep": "v1",
+  "smoke": false,
+  "mode": "human",
+  "wall_s": 1286.3,
+  "arm_wall_s": 1286.3,
+  "resumes": 0,
+  "decider_s": 0.0,
+  "decider_cost_usd": 0.0,
+  "reconstructed": "harness run process killed at 01:02:21 by the superpowers arm (taskkill //F //IM python.exe); wall = first stream event to the first BENCHMARK-COMPLETE result"
+}
