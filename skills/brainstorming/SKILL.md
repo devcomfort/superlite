@@ -41,7 +41,7 @@ Write what you understood (separate what the user said from your assumptions), t
 
 1. Write ONE doc, `docs/plans/YYYY-MM-DD-<topic>.md`: the design above, then the plan. Invoke `superlite:writing-plans` for the plan half and append it to the same file. If the user named a different location, use theirs.
 2. Self-review inline: placeholders, contradictions, scope (one plan, or decompose?), and requirements that could be read two ways. Fix them in place. No review loop, no subagent.
-3. Give the path and ask once for approval of the whole doc, batching its open choices. Show the plan's predicted schedule line and any `MISSED TARGET` warning with its `Ruling:` in it. Run `bash <skill-dir>/../subagent-driven-development/scripts/sl graphify_gate`; when it reports `needs_install: true`, add the Graphify install opt-in (`uv tool install graphifyy`) to that same question. Never install without a yes.
+3. Give the path and ask once for approval of the whole doc, batching its open choices. Show the plan as written with its predicted schedule line (from `schedule --insert`; lint runs only after the yes). Run `bash <skill-dir>/../subagent-driven-development/scripts/sl graphify_gate`; when it reports `needs_install: true`, add the Graphify install opt-in (`uv tool install graphifyy`) to that same question. Never install without a yes.
 4. On approval, invoke `superlite:subagent-driven-development` once, in this session: this session is the one coordinator. It runs `lint --stable`, dispatches the stable tasks at once and patches only the FIX tasks.
 
 Until approval, only read-only exploration is allowed. No scaffolding, no dependency installs, no product code. Approval covers the doc as presented. If the user changes the design, revise and re-present once.
