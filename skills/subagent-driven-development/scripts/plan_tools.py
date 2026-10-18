@@ -1338,6 +1338,10 @@ def block_hash(task: Task) -> str:  # O(block bytes) whitespace-insensitive dige
 
 
 def cmd_lint_stable(args) -> int:  # O(lint + n*k*s)
+    import orchestrator  # human mode: no lint --stable (and so no dispatch) before approval | O(1)
+    blocked = orchestrator.require(args.plan, "lint --stable")  # O(file)
+    if blocked:  # O(1)
+        return blocked  # O(1)
     plan = Plan.load(args.plan)  # O(C+L)
     issues, warnings = lint_plan(plan, args)  # O(lint)
     stable, fix, plan_issues = stable_partition(plan, issues, warnings)  # O(n + e*n)

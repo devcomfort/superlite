@@ -149,6 +149,10 @@ def summary(ledger, log, lint_log=DEFAULT_LINT_LOG, plan=None, sl_dir=None):  # 
     out.append("")  # O(1)
     out.append(unblocked_report(ledger, lint_log))  # see unblocked_report
     out.append("")  # O(1)
+    sys.path.insert(0, str(Path(__file__).resolve().parent))  # O(1)
+    import orchestrator  # O(1)
+    out.append(orchestrator.summary_line(Path(ledger).resolve().parent))  # mode, and the approval time in human mode | O(file)
+    out.append("")  # O(1)
     cr = Path(ledger).with_name("chain-rulings.json")  # sequential rulings lint accepted, with the minutes they cost | O(1)
     try:  # O(1)
         accepted = json.loads(cr.read_text(encoding="utf-8")) if cr.is_file() else []  # O(size)

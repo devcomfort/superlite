@@ -17,14 +17,14 @@ Save to `docs/plans/YYYY-MM-DD-<topic>.md`. When called from `superlite:brainsto
 
 ## Write for the split
 
-**Who decides sets the mode.**
-- **A human approves** (the default): the plan is a document approved as a whole. In order:
+**Who orchestrates sets the mode** (`sl orchestrator status`).
+- **Human orchestrator** (the human validates the plan before it runs): the plan is a document approved as a whole. In order:
   1. Write it complete, in the order below (producers first, task blocks complete and sized for the band).
   2. Run only `schedule --insert`, so the plan shows its Gantt and predicted time. Do not lint yet.
-  3. Show the human the plan as written: the path and the predicted schedule line. Ask for approval. Nothing is linted or dispatched before the yes.
-  4. On yes, the coordinator runs `lint --stable` and dispatches the stable set in the same turn, split out per `dispatch`.
+  3. Show the human the plan as written: the path and the predicted schedule line. Ask for approval. Nothing is linted or dispatched before the yes (`lint --stable`, `dispatch`, `wave0` and `build_prime` refuse until `sl orchestrator approve`).
+  4. On yes, run `sl orchestrator approve`; the coordinator runs `lint --stable` and dispatches the stable set in the same turn, split out per `dispatch`.
   5. It patches the FIX tasks, re-lints and dispatches the newly stable ones without asking again, as long as each fix stays inside what was approved (sizes, splits, stubs, field corrections). A fix that changes scope, an interface the human saw, or the spec coverage goes back to the human as one question.
-- **Decisions are delegated** (the user pre-approved, said "decide yourself", or an agent runs the session): write a queue that starts building while the fixes are made. Lint splits what you write into stable tasks, which build now, and fix tasks, which wait. Follow all six rules. Record open choices as `Ruling:` lines.
+- **AI orchestrator** (hands off: the user pre-approved, said "decide yourself", or an agent runs the session): write a queue that starts building while the fixes are made. Lint splits what you write into stable tasks, which build now, and fix tasks, which wait. Follow all six rules. Record open choices as `Ruling:` lines.
 
 In both modes, write for the split:
 
@@ -152,7 +152,7 @@ The plan rides in the shared prime and is written on the critical path. Keep con
 
 These are plan failures: "TBD", "TODO", "add error handling", "handle edge cases", "similar to Task N", a test without a name and an asserted value, or a type or function no task defines.
 
-## After writing: schedule, then lint --stable (lint waits for approval when a human approves)
+## After writing: schedule, then lint --stable (lint waits for approval with a human orchestrator)
 
 Run both. Replace `PLAN` and `SPEC` with the paths. `<superlite-root>` is two levels above this skill's "Base directory for this skill: ..." path (run it through `cygpath -u` first if that exists).
 

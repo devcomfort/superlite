@@ -5,7 +5,7 @@ description: Use when the user asks to build a feature or component, add functio
 
 # Brainstorming
 
-Turn a request into an approved design with as little ceremony as the request allows. Intent comes first: know what the user wants to accomplish and what success looks like before you pick an approach. The human approves once, before implementation. After that, nothing stops you except destructive, outward-facing (push, merge, publish) or security-sensitive actions.
+Turn a request into an approved design with as little ceremony as the request allows. Intent comes first: know what the user wants to accomplish and what success looks like before you pick an approach. Who orchestrates is chosen first: with a human orchestrator the human approves the plan once, before it runs; with an AI orchestrator nothing is asked. After that, nothing stops you except destructive, outward-facing (push, merge, publish) or security-sensitive actions.
 
 ## 1. Size the request, in one line
 
@@ -22,7 +22,7 @@ Hidden complexity found mid-task upgrades the size. Say so and step up. If the r
 
 Read the relevant code and recent commits first. Use an Explore agent (model haiku, effort low) for broad sweeps. Do not ask what the repo or the request already answers.
 
-If purpose, constraints or success criteria are still missing, ask them in ONE `AskUserQuestion` call: up to 4 questions, multiple choice where possible, your recommended option first. For architectural work, include the plan `detail` choice in the same batch: `contracts`, `tests` or `full`. Recommend `full` when the core is algorithmic or risky, otherwise `tests` (the default). Never one question per message. Bounded work gets at most one batch. If nothing is missing, ask nothing and restate your understanding in the design instead.
+If purpose, constraints or success criteria are still missing, ask them in ONE `AskUserQuestion` call: up to 4 questions, multiple choice where possible, your recommended option first. For architectural work, include the plan `detail` choice in the same batch: `contracts`, `tests` or `full`. Recommend `full` when the core is algorithmic or risky, otherwise `tests` (the default). Add the orchestrator choice to that same call as one single-choice question, options `Human orchestrator: I approve the plan before it runs` and `AI orchestrator: hands off, it does everything` (details in `../subagent-driven-development/orchestrator.md`); never ask it when the request settles it, and in a headless run default to AI with a `Ruling:`. Then record it: `bash <skill-dir>/../subagent-driven-development/scripts/sl orchestrator set human|ai`. Never one question per message. Bounded work gets at most one batch. If nothing is missing, ask nothing and restate your understanding in the design instead.
 
 ## 3. Design
 
@@ -41,14 +41,14 @@ Write what you understood (separate what the user said from your assumptions), t
 
 1. Write ONE doc, `docs/plans/YYYY-MM-DD-<topic>.md`: the design above, then the plan. Invoke `superlite:writing-plans` for the plan half and append it to the same file. If the user named a different location, use theirs.
 2. Self-review inline: placeholders, contradictions, scope (one plan, or decompose?), and requirements that could be read two ways. Fix them in place. No review loop, no subagent.
-3. Give the path and ask once for approval of the whole doc, batching its open choices. Show the plan as written with its predicted schedule line (from `schedule --insert`; lint runs only after the yes). Run `bash <skill-dir>/../subagent-driven-development/scripts/sl graphify_gate`; when it reports `needs_install: true`, add the Graphify install opt-in (`uv tool install graphifyy`) to that same question. Never install without a yes.
+3. With a human orchestrator: give the path and ask once for approval of the whole doc, batching its open choices; on the yes run `sl orchestrator approve`. With an AI orchestrator skip the approval. Show the plan as written with its predicted schedule line (from `schedule --insert`; lint runs only after the yes). Run `bash <skill-dir>/../subagent-driven-development/scripts/sl graphify_gate`; when it reports `needs_install: true`, add the Graphify install opt-in (`uv tool install graphifyy`) to that same question. Never install without a yes.
 4. On approval, invoke `superlite:subagent-driven-development` once, in this session: this session is the one coordinator. It runs `lint --stable`, dispatches the stable tasks at once and patches only the FIX tasks.
 
 Until approval, only read-only exploration is allowed. No scaffolding, no dependency installs, no product code. Approval covers the doc as presented. If the user changes the design, revise and re-present once.
 
-## Unattended mode
+## AI orchestrator (unattended)
 
-If the user says they are away, or "decide yourself", or the prompt pre-approves design and plan, the gate is already passed. Skip the questions and the approval. Choose the sensible default for each open question, including the plan `detail` (`full` for algorithmic or risky cores, otherwise `tests`), and record it in the doc, or in chat for bounded work, as a line:
+If the user says they are away, or "decide yourself", or the prompt pre-approves design and plan, or the orchestrator is AI, the gate is already passed. Skip the questions and the approval. Choose the sensible default for each open question, including the plan `detail` (`full` for algorithmic or risky cores, otherwise `tests`), and record it in the doc, or in chat for bounded work, as a line:
 
 `Ruling: <decision> (because <reason>)`
 

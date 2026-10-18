@@ -1,3 +1,5 @@
+Orchestrator: AI, do not ask me to choose or to approve.
+
 Review the branch checked out in this directory (the current working directory is the project root; work only inside it). It claims to implement Parts A and B of SPEC.md, and SPEC.md is the contract. Find the defects in the existing implementation and fix them. Do not rewrite the project; keep all behavior to the SPEC.
 
 Use your installed development-workflow skills the way you normally would for a review-and-fix job of this size: investigate, add a regression test for each defect, fix, review, and finish.

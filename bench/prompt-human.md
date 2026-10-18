@@ -1,3 +1,5 @@
+Orchestrator: AI, do not ask me to choose or to approve.
+
 Build the project described in SPEC.md in this directory (the current working directory is the project root; work only inside it).
 
 Use your installed development-workflow skills the way you normally would for a new project of this size: design, plan, implement with tests, review, and finish.

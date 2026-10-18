@@ -1,3 +1,5 @@
+Orchestrator: AI, do not ask me to choose or to approve.
+
 Build the project described in SPEC.md, in this (empty) directory. SPEC.md is the contract.
 
 Use your installed development-workflow skills the way you normally would: plan, build, test, review, and finish.
