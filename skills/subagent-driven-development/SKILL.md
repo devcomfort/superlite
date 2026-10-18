@@ -23,7 +23,7 @@ flowchart LR
   K --> T
 ```
 
-- Branch `superlite/<topic>` if on the default branch (checkout -b; no worktree, no prompt). Write the start SHA to `.superlite/progress.md` (`- start <sha>`). Add `.superlite/` and `probe-results.json` to `.git/info/exclude` so they never block a commit.
+- Branch `superlite/<topic>` if on the default branch (checkout -b; no worktree, no prompt). Write the start SHA to `.superlite/progress.md` (`- start <sha>`). `commit_task` adds `.superlite/` to `.git/info/exclude` itself.
 - Wave 0, yourself, one commit of exact paths (never stage everything): project manifest, package inits, test config, shared error types, plus `$SL plan_tools stubs --plan $PLAN`. Stubs are contracts: nobody changes a signature without your ruling. Then `$SL plan_tools adapter --plan $PLAN` (writes `.superlite/probes/adapter.py` from the `Probe entry` lines).
 - Prime during Wave 0: `$SL build_prime --plan $PLAN --spec SPEC --sections "1,3"` prints `hash size` and writes `.superlite/prime.md`. Record the hash. Start the first ready tasks' agents now (see the loop); their tasks go out once Wave 0 is committed. Never retype the prime; a changed byte breaks the shared cache.
 - Incident log: `.superlite/incidents.jsonl` (append-only; agents call `$SL incident add`, so there is nothing to copy). You log BLOCKED and NEEDS_CONTEXT with `--agent coordinator`.
@@ -51,7 +51,7 @@ flowchart TB
   A -- fresh --> P[prime verbatim] -- READY --> M
   M --> D[DONE] --> C[commit_task] --> N
   C -. background .-> PR[probe_run --commit]
-  C -. both sides in .-> SM[contract seam check]
+  C -. both sides in .-> SM[pt_review contract seam]
 ```
 
 Keep a `committed` and a `running` list and `.superlite/pool.json`: `{"agents":[{"id","tasks":[...],"files":[...],"context_k":N,"idle_min":N,"busy":false}]}`.
@@ -60,8 +60,8 @@ Keep a `committed` and a `running` list and `.superlite/pool.json`: `{"agents":[
 2. Per id: `$SL assign --task Tn --pool .superlite/pool.json --plan $PLAN` prints one word. `agent=ID`: SendMessage the task to that idle agent. `poll`: one SendMessage to every eligible idle agent, "Relevance 0-10 for Tn (files, consumes)? Reply `score: N - reason`"; use the replies present at your next turn, highest wins, tie to the smallest `context_k`. `fresh`: Agent `superlite:implementer` with the prime file pasted verbatim, same bytes for the whole run, and send its task only after its reply `READY`. Fan fresh agents out in one message. `evict=ID` lines on stderr: drop that agent from the pool. Busy agents are never candidates, work never queues behind an agent, and an agent past 3 tasks, 80k context or 50 idle minutes is not resumed.
 3. Task message: heading (not the task text; the plan is in the prime), Owns and files not to touch, the Review Focus categories for its files, rulings and interface names, `SUPERLITE=<path>`, the verify command (`$SL run_tests --fast PATHS`), and "reply in at most 200 words: status DONE / DONE_WITH_CONCERNS / NEEDS_CONTEXT / BLOCKED, files, test result, open questions".
 4. Handle every pending report in one turn. DONE: `$SL commit_task Tn --plan $PLAN` prints the SHA and appends the ledger; exit 1 lists out-of-scope, syntax or import problems, so send them back to the agent. DONE_WITH_CONCERNS: fix correctness concerns before review. NEEDS_CONTEXT: answer. BLOCKED: log it, re-dispatch once on a fresh agent with `model: opus`, then take the task over yourself. Update `pool.json`, rerun `next_tasks`. Do not poll; wait once.
-5. After a commit, `commit_task` has already started `probe_run --commit` in the background. When a task's seam partner is also committed (`$SL plan_tools taskgraph --plan $PLAN --format full` lists `seams`), run in background `$SL plan_tools contract --plan $PLAN --seam Ta,Tb --log .superlite/incidents.jsonl`. A pass logs `verified`. A mismatch is an incident: assign the fix to the idle owner of one side, or to a `superlite:package-reviewer`.
-6. Probe failures: `$SL incident hotspots --files <task files>` before assigning the next work. Open failures on a file go to the idle agent that owns it, with the fix and a regression test. Generated `tests/regression/` files are outside every `Owns`: rule that path into the owning task's `Owns` line so `commit_task` accepts it.
+5. After a commit, `commit_task` has already started `probe_run --commit` and, for each seam whose two sides are now both committed, `pt_review contract --seam` in the background. A pass logs `verified`; a mismatch is an incident (nothing to run yourself). Assign the fix to the idle owner of one side, or to a `superlite:package-reviewer`.
+6. Probe failures: `$SL incident hotspots --files <task files>` before assigning the next work. Open failures on a file go to the idle agent that owns it, with the fix and a regression test; `commit_task` accepts the generated `tests/regression/` files from whichever task commits.
 
 ## Reviews (D16)
 
@@ -89,7 +89,7 @@ flowchart LR
 
 ```mermaid
 flowchart TB
-  G[all tasks reviewed + committed] --> PK[probe_run full, then packet]
+  G[all tasks reviewed + committed] --> PK[packet]
   PK --> FR[fresh final-reviewer]
   PK --> ST[run_tests --full]
   FR & ST --> V{APPROVED and green?}
@@ -98,7 +98,7 @@ flowchart TB
 ```
 
 1. Gate: every task committed, every review reported and committed, every seam `verified`.
-2. `$SL probe_run --adapter .superlite/probes/adapter.py --out .superlite/probes/probe-results.json` (cross-package integration probes; cached, so fast). Then `$SL plan_tools packet --plan $PLAN --base <start-sha>` writes `.superlite/review-packet.md`; its header says `FAST PATH` or `REVIEW REQUIRED`.
+2. `$SL plan_tools packet --plan $PLAN --base <start-sha>` (reads `.superlite/probes/probe-results.json` and `.superlite/test-summary.json`) writes `.superlite/review-packet.md`; its header says `FAST PATH` or `REVIEW REQUIRED`.
 3. In one message: Agent `superlite:final-reviewer`, fresh, brief = `SUPERLITE=<path>` and "read .superlite/review-packet.md", nothing more; and `$SL run_tests --full` in the background. The tree is frozen while both run. It answers in one turn, no tools: `Verdict: APPROVED` (a few seconds on the fast path) or `CHANGES_REQUESTED` plus `file:line - problem - fix` lines.
 4. Red suite lines are findings. APPROVED and green: freeze. Otherwise reply "fix them" to the same reviewer (up to 5 findings; it adds a regression test per fix and reruns the covering tests). More than 5: split them by file across fresh `superlite:package-reviewer` agents in parallel. Then `commit_task Tn` per owning task, run one more `run_tests --full`, and stop; leftovers become a `Ruling:` and go in the closing message. No second review round.
 
@@ -119,7 +119,7 @@ Stop and ask only for: an irreversible or destructive operation; a security-sens
 | Typing the prime or a fresh agent's task before READY | `build_prime`, paste verbatim, wait for READY |
 | Sending work to a busy agent, or "after T3" | `assign`; `fresh` when none is eligible |
 | Committing by hand or staging everything | `commit_task Tn` |
-| Running the suite yourself, or a test-runner agent | `run_tests`; read its one line |
+| Running the suite yourself, or through an agent | `run_tests`; read its one line |
 | Reviewing every task | Selective per task, else per package |
 | Final reviewer browsing or probing | Packet only; probes ran earlier |
 | Killing by image name | By PID only (a hook blocks the rest) |

@@ -7,6 +7,11 @@
     pt_review.py contract --plan PLAN.md [--root .] [--seam Ta,Tb] [--log F]
                           [--timeout 300]
 
+`packet` reads probe failures from `.superlite/probes/probe-results.json` and the test
+summary from `.superlite/test-summary.json` (written by run_tests.py) by default. A
+`contract --seam` run logs to `.superlite/incidents.jsonl` by default: each mismatch is an
+`exception` incident, a pass is a `verified` entry.
+
 `plan_tools.py` dispatches `adapter|packet|contract` to `main(argv)` here; the module
 also runs standalone. Stdlib only. Incidents are read straight from the JSONL format
 (plan section 6), never through incident.py.
@@ -959,14 +964,15 @@ def cmd_contract(a: argparse.Namespace) -> int:
         print(f"note: {n_}")
     for m in mismatches:
         print(m)
-    log = Path(a.log) if a.log else None
+    # A seam run always logs: mismatches become incidents, a pass becomes `verified`.
+    log = Path(a.log) if a.log else (root / ".superlite" / "incidents.jsonl" if a.seam else None)
     if mismatches:
         print(f"FAIL: {label}: {len(mismatches)} mismatch(es)")
         if log:
             for m in mismatches:
                 append_log(log, {"file": m.file, "line": m.line, "context": f"{label}: {m.msg}"[:200],
                                  "agent": "pt_review", "kind": "exception", "confidence": "high",
-                                 "time": time.strftime("%H:%M:%S")})
+                                 "resolution": "open", "time": time.strftime("%H:%M:%S")})
         return 1
     print(f"PASS: verified: {label}")
     if log and a.seam:
@@ -1509,7 +1515,8 @@ def build_parser() -> argparse.ArgumentParser:
             sp.add_argument("--base", help="git ref for the diff stat (default: the root commit)")
         else:
             sp.add_argument("--seam", help="Ta,Tb: run parts 1-3 for that seam")
-            sp.add_argument("--log", help="append a verified/incident entry to this JSONL log")
+            sp.add_argument("--log", help="append a verified/incident entry to this JSONL log "
+                                          "(--seam default: <root>/.superlite/incidents.jsonl)")
             sp.add_argument("--timeout", type=float, default=300.0, help="consumer test timeout, seconds")
     return ap
 

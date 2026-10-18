@@ -2,11 +2,16 @@
 """Run pytest, parse the junit XML, print one summary line.
 
     run_tests.py [--fast PATHS... | --full] [--log PATH] [--ledger PATH]
+                 [--summary PATH]
 
 Prints `passed failed skipped seconds` (errors count as failed). Each failing
 test becomes a `test-failure` incident; on a --full run each test file whose
 tests all pass becomes a `verified` incident (once per distinct entry). Appends
-a `tests` line to the progress ledger. Exit 0 when nothing failed, 1 when a
+a `tests` line to the progress ledger. On every run it also writes
+`.superlite/test-summary.json` (--summary), the file `pt_review packet` reads:
+`{"passed": N, "failed": N, "skipped": N, "seconds": S, "mode": "fast|full",
+"failures": ["file::test: message", ...], "skipped_tests": ["file::test", ...]}`
+(a run where pytest produced nothing records failed=1 and the reason). Exit 0 when nothing failed, 1 when a
 test failed or none ran, 2 when pytest could not run. Stdlib only.
 """
 import argparse
@@ -22,6 +27,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import commit_task as ct  # noqa: E402
 import next_tasks as nt  # noqa: E402
+
+
+DEFAULT_SUMMARY = ".superlite/test-summary.json"
 
 
 def case_file(case):
@@ -43,9 +51,10 @@ def failure_line(case, text, fallback):
 
 
 def parse_junit(xml_path):
-    """-> (counts dict, failures [(file, line, context)], files {file: [ok, bad]})"""
+    """-> (counts dict, failures [(file, line, context)], files {file: [ok, bad]});
+    skipped test ids are in counts["skipped_tests"]"""
     root = ET.parse(xml_path).getroot()
-    counts = {"passed": 0, "failed": 0, "skipped": 0}
+    counts = {"passed": 0, "failed": 0, "skipped": 0, "skipped_tests": []}
     failures, files = [], {}
     for case in root.iter("testcase"):
         f = case_file(case)
@@ -61,6 +70,7 @@ def parse_junit(xml_path):
             failures.append((f, line, f"{case.get('name')}: {msg}"))
         elif case.find("skipped") is not None:
             counts["skipped"] += 1
+            counts["skipped_tests"].append(f"{f}::{case.get('name')}")
         else:
             counts["passed"] += 1
             ok_bad[0] += 1
@@ -81,6 +91,20 @@ def existing_verified(log):
     return seen
 
 
+def write_summary(path, mode, counts, failures, seconds, error=None):
+    """Write the test summary `pt_review packet` reads (atomically)."""
+    data = {"passed": counts["passed"], "failed": counts["failed"] + (1 if error else 0),
+            "skipped": counts["skipped"], "seconds": round(seconds, 1), "mode": mode,
+            "failures": [f"{f}::{ctx}"[:200] for f, _line, ctx in failures]
+            + ([error[:200]] if error else []),
+            "skipped_tests": counts["skipped_tests"]}
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_name(p.name + ".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    tmp.replace(p)
+
+
 def add_incident(log, file, line, context, kind, resolution=None):
     nt.add_incident(log, file, line, context, kind, "run_tests", resolution)
 
@@ -93,6 +117,8 @@ def main(argv=None):
     mode.add_argument("--full", action="store_true", help="run everything (default)")
     ap.add_argument("--log", default=ct.DEFAULT_LOG)
     ap.add_argument("--ledger", default=ct.DEFAULT_LEDGER)
+    ap.add_argument("--summary", default=DEFAULT_SUMMARY,
+                    help="test summary JSON for pt_review packet (default %(default)s)")
     a = ap.parse_args(argv)
     paths = [p for chunk in (a.fast or []) for p in nt.csv(chunk)]
     label = "fast" if paths else "full"
@@ -108,11 +134,16 @@ def main(argv=None):
         if (r.returncode not in (0, 1) or not xml_path.exists()
                 or xml_path.stat().st_size == 0):
             tail = (r.stdout + r.stderr).strip().splitlines()[-5:]
-            print("pytest produced no results: " + " | ".join(tail), file=sys.stderr)
+            reason = "pytest produced no results: " + " | ".join(tail)
+            print(reason, file=sys.stderr)
+            write_summary(a.summary, label, {"passed": 0, "failed": 0, "skipped": 0,
+                                             "skipped_tests": []}, [], seconds,
+                          error=reason if r.returncode != 5 else None)
             print(f"0 0 0 {seconds:.1f}")
             return 1 if r.returncode == 5 else 2
         counts, failures, files = parse_junit(xml_path)
 
+    write_summary(a.summary, label, counts, failures, seconds)
     for f, line, ctx in failures:
         add_incident(a.log, f, line, ctx, "test-failure", "open")
     if label == "full":

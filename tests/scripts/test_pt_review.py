@@ -345,3 +345,44 @@ def test_bad_usage_returns_2():
     assert run("packet") == 2
     assert run("nonsense") == 2
     assert run("packet", "--plan", "no-such-plan.md") == 2
+
+
+def test_packet_reads_default_probe_and_test_summary_paths(proj: Path):
+    """Packet defaults: .superlite/probes/probe-results.json and .superlite/test-summary.json."""
+    sl = proj / ".superlite"
+    (sl / "probes").mkdir(parents=True)
+    (sl / "probes" / "probe-results.json").write_text(json.dumps({"results": [
+        {"category": "state", "file": "src/minisheet/workbook.py", "line": 3, "status": "crash",
+         "detail": "default-path probe failure"}]}), encoding="utf-8")
+    (sl / "test-summary.json").write_text(json.dumps({
+        "passed": 4, "failed": 1, "skipped": 0, "failures": ["tests/test_d.py::test_default"],
+        "skipped_tests": []}), encoding="utf-8")
+    assert run("packet", "--plan", str(proj / "plan.md"), "--root", str(proj)) == 0
+    text = (sl / "review-packet.md").read_text(encoding="utf-8")
+    assert "default-path probe failure" in text
+    assert "FAILING: tests/test_d.py::test_default" in text
+
+
+def test_contract_seam_logs_incident_by_default_and_verified_on_pass(proj: Path, capsys):
+    (proj / "tests").mkdir()
+    (proj / "tests" / "test_ui.py").write_text(CONSUMER_TEST, encoding="utf-8")
+    log = proj / ".superlite" / "incidents.jsonl"
+    assert contract(proj, "--seam", "T1,T2") == 0          # no --log: default incident log
+    entries = [json.loads(ln) for ln in log.read_text(encoding="utf-8").splitlines()]
+    assert [(e["kind"], e["agent"]) for e in entries] == [("verified", "pt_review")]
+    edit(proj / "src/minisheet/workbook.py", "def set(self, ref: str, raw: str)", "def set(self, ref: str)")
+    assert contract(proj, "--seam", "T1,T2") == 1
+    entries = [json.loads(ln) for ln in log.read_text(encoding="utf-8").splitlines()]
+    bad = [e for e in entries if e["kind"] == "exception"]
+    assert bad and all(e["agent"] == "pt_review" and e["resolution"] == "open" for e in bad)
+    assert any("missing parameter 'raw'" in e["context"] for e in bad)
+    assert bad[0]["file"] == "src/minisheet/workbook.py"
+    capsys.readouterr()
+    # the packet then lists it as an open incident
+    assert run("packet", "--plan", str(proj / "plan.md"), "--root", str(proj)) == 0
+    assert "missing parameter 'raw'" in (proj / ".superlite" / "review-packet.md").read_text(encoding="utf-8")
+
+
+def test_contract_without_seam_does_not_write_a_log(proj: Path):
+    assert contract(proj) == 0
+    assert not (proj / ".superlite" / "incidents.jsonl").exists()

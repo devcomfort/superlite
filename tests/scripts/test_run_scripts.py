@@ -411,3 +411,108 @@ def test_finish_with_nothing_recorded(tmp_path):
     assert r.returncode == 0
     assert "commits: 0" in r.stdout and "rulings: 0" in r.stdout
     assert "tests: none recorded" in r.stdout and "open incidents: 0" in r.stdout
+
+
+# ------------------------------------------------- seam checks, regression, summary
+
+def wait_lines(path, n, timeout=15):
+    for _ in range(int(timeout * 10)):
+        if path.exists() and len(path.read_text(encoding="utf-8").splitlines()) >= n:
+            break
+        time.sleep(0.1)
+    return sorted(path.read_text(encoding="utf-8").splitlines()) if path.exists() else []
+
+
+def test_commit_launches_seam_checks_when_both_sides_committed(tmp_path):
+    repo = make_repo(tmp_path)
+    marker = repo / ".superlite" / "pt_marker.txt"
+    write(repo, "src/a.py", "X = 1\n")
+    assert commit(repo, "T1").returncode == 0
+    write(repo, "src/b.py", "Y = 1\n")
+    assert commit(repo, "T2").returncode == 0
+    time.sleep(0.7)
+    assert not marker.exists()                      # T3 not committed: no seam is complete
+    write(repo, "src/c.py", "Z = 1\n")
+    assert commit(repo, "T3").returncode == 0
+    log = ".superlite/incidents.jsonl"
+    assert wait_lines(marker, 2) == [
+        f"contract --plan plan.md --seam T1,T3 --log {log}",
+        f"contract --plan plan.md --seam T2,T3 --log {log}"]
+    time.sleep(0.5)
+    assert len(marker.read_text(encoding="utf-8").splitlines()) == 2
+    write(repo, "src/main.py", "W = 1\n")           # T6 sits behind T3 only
+    assert commit(repo, "T6").returncode == 0
+    assert f"contract --plan plan.md --seam T3,T6 --log {log}" in wait_lines(marker, 3)
+
+
+def test_commit_seam_check_needs_the_ledger_not_the_tree(tmp_path):
+    repo = make_repo(tmp_path)
+    write(repo, "src/c.py", "Z = 1\n")             # T3 first: its producers are uncommitted
+    assert commit(repo, "T3").returncode == 0
+    time.sleep(0.7)
+    assert not (repo / ".superlite" / "pt_marker.txt").exists()
+
+
+def test_commit_accepts_generated_regression_tests_and_never_stages_superlite(tmp_path):
+    repo = make_repo(tmp_path)
+    write(repo, "src/a.py", "X = 1\n")
+    write(repo, "tests/regression/test_probe_deep_1.py", "def test_deep():\n    assert True\n")
+    write(repo, ".superlite/probes/probe-results.json", "{}\n")
+    write(repo, ".superlite/incidents.jsonl", "")
+    r = commit(repo, "T1")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert sorted(git(repo, "show", "--name-only", "--format=", "HEAD").split()) == [
+        "src/a.py", "tests/regression/test_probe_deep_1.py"]
+    exclude = (repo / ".git" / "info" / "exclude").read_text(encoding="utf-8")
+    assert ".superlite/" in exclude.splitlines()
+    assert git(repo, "status", "--porcelain").replace("?? plan.md", "").strip() == ""
+    # another task's review fix: regression tests belong to whoever commits them
+    write(repo, "src/b.py", "Y = 1\n")
+    write(repo, "tests/regression/test_probe_state_2.py", "def test_s():\n    assert True\n")
+    assert commit(repo, "T2").returncode == 0
+    assert "tests/regression/test_probe_state_2.py" in git(
+        repo, "show", "--name-only", "--format=", "HEAD").split()
+    # the exclude entry is added once
+    exclude = (repo / ".git" / "info" / "exclude").read_text(encoding="utf-8")
+    assert exclude.splitlines().count(".superlite/") == 1
+
+
+def test_commit_regression_dir_does_not_open_other_paths(tmp_path):
+    repo = make_repo(tmp_path)
+    write(repo, "src/a.py", "X = 1\n")
+    write(repo, "tests/regression/test_probe_x.py", "def test_x():\n    assert True\n")
+    write(repo, "tests/other.py", "pass\n")
+    r = commit(repo, "T1")
+    assert r.returncode == 1 and "out-of-scope tests/other.py" in r.stdout
+    assert "regression" not in r.stdout
+
+
+def test_run_tests_writes_summary_packet_can_read(tmp_path):
+    import pt_review
+    proj = project(tmp_path, "pass", "fail")
+    r = run("run_tests", "--full", cwd=proj)
+    assert r.returncode == 1, r.stdout + r.stderr
+    summary = proj / ".superlite" / "test-summary.json"
+    d = json.loads(summary.read_text(encoding="utf-8"))
+    assert (d["passed"], d["failed"], d["skipped"], d["mode"]) == (3, 1, 1, "full")
+    assert len(d["failures"]) == 1 and d["failures"][0].startswith("test_fail.py::test_broken")
+    assert d["skipped_tests"] == ["test_fail.py::test_skipped"]
+    text, nfail = pt_review.read_test_summary(summary)
+    assert nfail == 1
+    assert "passed 3" in text and "failed 1" in text and "skipped 1" in text
+    assert "FAILING: test_fail.py::test_broken" in text
+    assert "SKIPPED: test_fail.py::test_skipped" in text
+
+
+def test_run_tests_summary_on_fast_green_and_on_pytest_failure(tmp_path):
+    proj = project(tmp_path, "pass")
+    summary = proj / ".superlite" / "test-summary.json"
+    assert run("run_tests", "--fast", "test_pass.py", cwd=proj).returncode == 0
+    d = json.loads(summary.read_text(encoding="utf-8"))
+    assert (d["passed"], d["failed"], d["mode"], d["failures"]) == (2, 0, "fast", [])
+    assert run("run_tests", "--fast", "missing_dir", cwd=proj).returncode == 2
+    d = json.loads(summary.read_text(encoding="utf-8"))
+    assert d["failed"] == 1 and "pytest produced no results" in d["failures"][0]
+    custom = tmp_path / "elsewhere.json"
+    assert run("run_tests", "--summary", custom, cwd=proj).returncode == 0
+    assert json.loads(custom.read_text(encoding="utf-8"))["passed"] == 2
