@@ -1,0 +1,11 @@
+{
+  "arm": "superlite",
+  "rep": "e2",
+  "smoke": false,
+  "mode": "human",
+  "wall_s": 1967.0,
+  "arm_wall_s": 1957.2,
+  "resumes": 1,
+  "decider_s": 9.8,
+  "decider_cost_usd": 0.247
+}
