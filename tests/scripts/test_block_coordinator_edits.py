@@ -41,7 +41,7 @@ def test_blocks_coordinator_edit_of_source(proj):
 
 def test_message_names_fixer_tiers(proj):
     r = run(proj, "Edit", {"file_path": str(proj / "a.go")})
-    for s in ("fixer-haiku", "fixer-sonnet", "fixer-sonnet-high", "fixer-opus",
+    for s in ("fixer-sonnet", "fixer-sonnet-high", "fixer-opus",
               "F-<Tn>-<n>", ".superlite/fixes/", "implementer-haiku", "fixing.md"):
         assert s in r.stderr
     incidents = (proj / ".superlite" / "incidents.jsonl").read_text().splitlines()

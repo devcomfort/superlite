@@ -128,7 +128,7 @@ printf '{"kind":"rule-block","agent":"coordinator","tool":"%s","target":"%s"}\n'
 
 printf '%s\n' \
   'Blocked: the superlite coordinator must not write project code. Dispatch it instead:' \
-  '- Fix: give a fixer a finding id F-<Tn>-<n> and the note path .superlite/fixes/<id>.md, tiered per skills/subagent-driven-development/fixing.md: fully specified fix -> fixer-haiku; known cause, one module -> fixer-sonnet; cross-module -> fixer-sonnet-high; unknown cause -> fixer-opus.' \
+  '- Fix: give a fixer a finding id F-<Tn>-<n> and the note path .superlite/fixes/<id>.md, tiered per skills/subagent-driven-development/fixing.md: known cause, one module -> fixer-sonnet; cross-module -> fixer-sonnet-high; unknown cause -> fixer-opus.' \
   '- Wave 0 skeleton/stub/config files belong to an implementer-haiku task.' \
   '- New code belongs to an implementer task. You may write only docs/plans/**, SPEC*.md, docs/**/*.md and .superlite/**.' >&2
 exit 2

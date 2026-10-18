@@ -40,6 +40,7 @@ from pathlib import Path  # O(1)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # O(path list)
 import _pyrun as pyrun  # noqa: E402  # O(1) module load
+import testcmd  # noqa: E402  # O(1) module load
 import commit_task as ct  # noqa: E402  # O(1) module load
 import next_tasks as nt  # noqa: E402  # O(1) module load
 
@@ -125,7 +126,10 @@ def case_file(case):  # O(d) stats, O(d^2) path work (stats are uncached)
     f = case.get("file")  # O(1)
     if f:  # O(1)
         return f.replace("\\", "/")  # O(len(f))
-    parts = (case.get("classname") or "").split(".")  # O(d)
+    cn = case.get("classname") or ""  # O(1)
+    if re.search(r"[\\/]|\.(?:[jt]sx?|go|rs|cs)$", cn):  # a path-like classname (vitest, jest, go, cargo): use it as the file | O(1)
+        return cn.replace("\\", "/")  # O(1)
+    parts = cn.split(".")  # O(d)
     while parts and not Path(*parts).with_suffix(".py").exists():  # O(d) iterations; Path join + stat O(d) each
         parts.pop()  # O(1)
     if parts:  # O(d)
@@ -235,9 +239,54 @@ def main(argv=None):  # O(X + T*d + B + F log F) + pytest run + one incident app
     return run(a)  # see run
 
 
-def run(a):  # O(X + T*d + B + F log F) + pytest run + one incident append
+def run_other(a, spec, paths, label):  # one runner command (any language) | O(X + o) + the run
+    """Run the resolved non-Python command: JUnit when the runner wrote one, else exit code plus output parsing."""
+    with tempfile.TemporaryDirectory() as tmp:  # O(1)
+        xml_path = Path(tmp) / "junit.xml"  # O(1)
+        sub = lambda s: s.replace("{junit}", str(xml_path))  # noqa: E731 | O(len)
+        env = {**os.environ, **{k: sub(str(v)) for k, v in (spec.get("env") or {}).items()}}  # O(env)
+        literal = Path(spec["junit"]) if spec["junit"] and "{junit}" not in spec["junit"] else None  # a path the runner always writes | O(1)
+        if literal and literal.exists():  # a stale report must not count | O(1)
+            literal.unlink()  # O(1)
+        marker = Path(".superlite") / "setup.done"  # setup runs once per run directory | O(1)
+        if spec["setup"] and not marker.exists():  # O(1)
+            pyrun.run_tree(sub(spec["setup"]), shell=True, capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)  # O(o)
+            marker.parent.mkdir(parents=True, exist_ok=True)  # O(1)
+            marker.write_text("ok\n", encoding="utf-8")  # O(1)
+        t0 = time.monotonic()  # O(1)
+        r = pyrun.run_tree(sub(spec["command"]), shell=True, capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)  # O(o) + the run
+        seconds = time.monotonic() - t0  # O(1)
+        text = (r.stdout or "") + (r.stderr or "")  # O(o)
+        report = xml_path if xml_path.exists() and xml_path.stat().st_size else (literal if literal and literal.exists() and literal.stat().st_size else None)  # O(1)
+        if report is not None:  # O(1)
+            try:  # O(1)
+                counts, failures, files = parse_junit(report)  # O(X + T*d)
+            except ET.ParseError:  # O(1)
+                report = None  # O(1)
+        if report is None:  # no JUnit: exit code plus the last 40 lines, failing names best effort | O(o)
+            p = testcmd.parse_output(text, r.returncode)  # O(o)
+            counts = {"passed": p["passed"], "failed": p["failed"], "skipped": p["skipped"], "skipped_tests": []}  # O(1)
+            last = next((ln for ln in reversed(p["tail"]) if ln.strip()), "no output")  # O(1)
+            failures = [("-", 0, f"{n}: failed") for n in p["names"]] or ([("-", 0, f"exit code {r.returncode}: {last}"[:160])] if r.returncode else [])  # O(k)
+            files = {}  # O(1)
+            atomic_write(Path(a.summary).with_name("test-output.log"), "\n".join(p["tail"]) + "\n")  # the last 40 lines | O(40)
+    return finish_run(a, label, counts, failures, files, seconds, r.returncode)  # O(k + F)
+
+
+def run(a):  # O(X + T*d + B + F log F) + the runner + one incident append
     paths = [p for chunk in (a.fast or []) for p in nt.csv(chunk)]  # O(p)
     label = "fast" if paths else "full"  # O(1)
+    spec = testcmd.resolve(".", paths)  # .superlite/test-cmd.json, else marker files | O(m + f)
+    if spec is None:  # no test command: exit 2 with a clear summary | O(1)
+        reason = ("no test command found: add .superlite/test-cmd.json "  # O(1)
+                  '{"language","test","test_file","junit","setup"} or a package.json scripts.test, go.mod, Cargo.toml, *.csproj or pytest project')
+        print(f"run_tests: {reason}", file=sys.stderr)  # O(1)
+        write_summary(a.summary, label, {"passed": 0, "failed": 0, "skipped": 0, "skipped_tests": []}, [], 0.0, error=reason)  # O(1)
+        publish_summary(a)  # O(summary size)
+        print("0 0 0 0.0")  # O(1)
+        return 2  # O(1)
+    if not spec["python"]:  # O(1)
+        return run_other(a, spec, paths, label)  # O(X + o)
 
     with tempfile.TemporaryDirectory() as tmp:  # O(1) mkdtemp
         xml_path = Path(tmp) / "junit.xml"  # O(1)
@@ -265,7 +314,10 @@ def run(a):  # O(X + T*d + B + F log F) + pytest run + one incident append
             print(f"0 0 0 {seconds:.1f}")  # O(1)
             return 1 if r.returncode == 5 else 2  # O(1)
         counts, failures, files = parse_junit(xml_path)  # O(X + T*d)
+    return finish_run(a, label, counts, failures, files, seconds, r.returncode)  # O(k + F)
 
+
+def finish_run(a, label, counts, failures, files, seconds, returncode):  # O(k + F + B) one incident append
     write_summary(a.summary, label, counts, failures, seconds)  # O(k + sk)
     publish_summary(a)  # O(summary size)
     items = [(f, line, ctx, "test-failure", "open") for f, line, ctx in failures]  # O(k)

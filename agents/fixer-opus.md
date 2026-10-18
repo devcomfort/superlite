@@ -1,6 +1,6 @@
 ---
 name: fixer-opus
-description: Fix-only agent, tier 4. Diagnoses unknown-cause findings (reproduce, then fix) with a regression test, then commits.
+description: Fix-only agent, tier 3. Diagnoses unknown-cause findings (reproduce, then fix) with a regression test, then commits.
 model: opus
 effort: high
 tools: Read, Edit, Write, Bash, Grep, Glob

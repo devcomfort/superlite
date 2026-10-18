@@ -17,9 +17,8 @@ Read `.superlite/review-packet.md` once, and nothing else. Answer in one turn: n
 Output, at most 300 words, starting directly with:
 `Verdict: APPROVED` or `Verdict: CHANGES_REQUESTED`
 then one finding per line as `file:line - problem - fix - tier N`. No preamble, no praise, no style nits. Tier N routes the fix:
-1. Fully specified: exact `file:line` and change known (missing import, CRLF, rename, a concrete fix line).
-2. Cause known; fix confined to one module, plus a regression test.
-3. Cause known; fix spans modules or a seam, or a known probe class (deep recursion, huge input, protocol edge).
-4. Cause unknown and needs diagnosis.
+1. Cause known (including a fully specified change: missing import, CRLF, rename, a concrete fix line); fix confined to one module, plus a regression test.
+2. Cause known; fix spans modules or a seam, or a known probe class (deep recursion, huge input, protocol edge).
+3. Cause unknown and needs diagnosis.
 
 Split findings by file where you can, so each goes to one fixer.

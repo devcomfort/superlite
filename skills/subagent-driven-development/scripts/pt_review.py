@@ -1094,6 +1094,19 @@ def _server(package=None):
     return _SERVERS[key]
 
 
+def start_server(package=None):
+    """For probe_run and the regression tests: start the serve entry on port 0, return (port, stop)."""
+    srv = _server(package)
+    key = _entry("serve", package)["package"]
+
+    def stop():
+        _SERVERS.pop(key, None)
+        srv.shutdown()
+        srv.server_close()
+
+    return srv.server_address[1], stop
+
+
 def request(method, path, body=None, package=None, timeout=10):
     """Server entry: one shared server per process on port 0; returns (status, json-or-text)."""
     srv = _server(package)

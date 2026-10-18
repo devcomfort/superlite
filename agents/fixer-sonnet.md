@@ -1,6 +1,6 @@
 ---
 name: fixer-sonnet
-description: Fix-only agent, tier 2. Fixes known-cause findings confined to one module with a regression test, then commits.
+description: Fix-only agent, tier 1. Fixes known-cause findings confined to one module with a regression test, then commits.
 model: sonnet
 effort: medium
 tools: Read, Edit, Write, Bash, Grep, Glob

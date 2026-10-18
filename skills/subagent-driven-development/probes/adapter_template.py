@@ -1,4 +1,7 @@
-"""Probe adapter template. Copy to .superlite/probes/adapter.py and fill in what applies.
+"""PYTHON ONLY: the probe runner and this adapter (also the one `pt_review.py adapter` generates, which provides
+start_server, request and close for `serve=` entries) import the project's Python code. Other languages skip the probe
+stage until they have their own adapter.
+Probe adapter template. Copy to .superlite/probes/adapter.py and fill in what applies.
 
 Define only the entry kinds the project has; probes for a missing kind are skipped.
 

@@ -355,3 +355,40 @@ def test_checkout_commit_archive_fallback(tmp_path):
     assert repo is None and (tree / "src" / "parser.py").is_file()
     mod.remove_checkout(tree, repo)
     assert not tree.exists()
+
+
+PT_REVIEW = REPO / "skills" / "subagent-driven-development" / "scripts" / "pt_review.py"
+
+
+def generated_server_project(tmp_path):
+    """A minimal server project (the probe_server fixture's package, no hand-written adapter) with a generated adapter."""
+    proj = tmp_path / "gen"
+    shutil.copytree(FIXTURES / "probe_server", proj)
+    (proj / "adapter.py").unlink()
+    plan = tmp_path / "plan.md"
+    plan.write_text("# Plan\n\n**Probe entry:** serve=fixture_site.create_server()\n", encoding="utf-8")
+    cp = subprocess.run([sys.executable, str(PT_REVIEW), "adapter", "--plan", str(plan), "--root", str(proj),
+                         "--out", str(proj / "adapter.py")], capture_output=True, text=True)
+    assert cp.returncode == 0, cp.stdout + cp.stderr
+    return proj
+
+
+def test_generated_server_adapter_has_start_server_and_passes_the_probes(tmp_path):
+    proj = generated_server_project(tmp_path)
+    src = (proj / "adapter.py").read_text(encoding="utf-8")
+    assert "def start_server(" in src and "def request(" in src
+    res = run(proj, "--categories", "protocol", "--files", "src/fixture_site.py", check_exit=0)
+    assert res["failures"] == [], res["failures"]
+    assert not [e for e in incidents(proj) if e["kind"] == "exception"], incidents(proj)  # w3: 90 of 116 came from a missing start_server
+    assert res["stats"]["server_starts"] >= 1 and res["stats"]["server_ports"]
+
+
+def test_generated_server_adapter_regression_tests_run_against_the_adapter(tmp_path):
+    proj = generated_server_project(tmp_path)
+    res = run(proj, "--categories", "http", "--probes", proj / "probes_crash", "--workers", "1", "--files", "src/fixture_site.py")
+    assert res["failures"], "the crash probe should produce a failure group"
+    tests = res["failures"][0].get("regression_test")
+    assert tests, res["failures"][0]
+    out = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", str(proj / tests)],
+                         cwd=proj, capture_output=True, text=True)
+    assert "start_server" not in out.stdout + out.stderr and "AttributeError" not in out.stdout + out.stderr, out.stdout[-800:]

@@ -169,7 +169,8 @@ Write one stub per `produces` item below (only the signatures another task consu
 
 1. The project installs (the manifest is valid and dependencies resolve with the project's own tool).
 2. The project's own test command, or its compile/type-check, runs on the stub tree: the tree builds, and any test fails as "not implemented", never as an import, syntax or configuration error.
-3. Never run `git add`, `commit`, `switch` or `checkout`; the coordinator runs `bash "$SL" commit_task {tid} --plan PLAN`.
+3. You write and verify `.superlite/test-cmd.json` on the stub tree: `{{"language","test","test_file","junit","setup"}}` (JSON; `test` runs everything, `test_file` takes `{{files}}`, `junit` is the report path or `{{junit}}` for the one run_tests supplies, `setup` installs dependencies). Verify it by running `bash "$SL" run_tests --full`: it must report the stubs as failing, never "no test command found".
+4. Never run `git add`, `commit`, `switch` or `checkout`; the coordinator runs `bash "$SL" commit_task {tid} --plan PLAN`.
 
 Reply in at most 200 words: Status (DONE, DONE_WITH_CONCERNS, NEEDS_CONTEXT or BLOCKED), files changed (paths only), test or build command and its result line, concerns.
 """  # O(L + q*s)

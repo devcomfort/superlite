@@ -1,6 +1,6 @@
 ---
 name: fixer-sonnet-high
-description: Fix-only agent, tier 3. Fixes known-cause findings that span modules or a seam, or known probe classes, with regression tests, then commits.
+description: Fix-only agent, tier 2. Fixes known-cause findings that span modules or a seam, or known probe classes, with regression tests, then commits.
 model: sonnet
 effort: high
 tools: Read, Edit, Write, Bash, Grep, Glob
