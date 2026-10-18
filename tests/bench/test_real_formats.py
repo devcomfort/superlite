@@ -232,3 +232,12 @@ def test_real_task_prompts_exist_and_end_with_the_marker(task):
     assert p == ROOT / "bench" / "tasks" / task / "prompt.md" and p.is_file()
     text = p.read_text(encoding="utf-8")
     assert "Build the project" not in text and text.rstrip().endswith(harness.MARKER)
+
+
+@pytest.mark.parametrize("task", ["combo-planted", "brownfield"])
+def test_human_mode_uses_the_tasks_own_human_prompt(task):
+    p = harness.prompt_path(True, task)
+    assert p == ROOT / "bench" / "tasks" / task / "prompt-human.md" and p.is_file()
+    text = p.read_text(encoding="utf-8")
+    assert "Build the project" not in text and "product owner" in text and text.rstrip().endswith(harness.MARKER)
+    assert harness.prompt_path(True, "combo") == ROOT / "bench" / "prompt-human.md"   # no own file: fallback

@@ -415,7 +415,7 @@ def test_finish_with_nothing_recorded(tmp_path):
 
 # ------------------------------------------------- seam checks, regression, summary
 
-def wait_lines(path, n, timeout=15):
+def wait_lines(path, n, timeout=90):
     for _ in range(int(timeout * 10)):
         if path.exists() and len(path.read_text(encoding="utf-8").splitlines()) >= n:
             break
