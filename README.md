@@ -63,7 +63,7 @@ And it is not tied to one language. A TypeScript site generator went from spec t
 | **Hands off** | "Build X. I am away, decide yourself" | The AI orchestrator plans, lints, dispatches and rules on open choices without stopping |
 | **Ship it** | "We are done: finish the branch" | Verification first, then merge or PR options. It never pushes without you |
 
-**Who orchestrates.** With a human orchestrator you review a plain-language plan with diagrams (a `.review.md`, about two pages, with a rough time and cost) **before** anything is linted or sent off; after your yes the coordinator rewrites it in the agent format (task graph, interfaces, examples, sizes) and runs it. With the AI orchestrator it does everything itself, with no review plan and no questions.
+**Who orchestrates.** With a human orchestrator nothing is built, dispatched or written (except the review plan) until you reply approve; you review a plain-language plan with diagrams (a `.review.md`, about two pages, with a rough time and cost) **before** anything is linted or sent off; after your yes the coordinator rewrites it in the agent format (task graph, interfaces, examples, sizes) and runs it. With the AI orchestrator it does everything itself, with no review plan and no questions.
 
 ---
 

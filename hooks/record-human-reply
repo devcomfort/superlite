@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# UserPromptSubmit hook: while a human-orchestrator run is unapproved (.superlite/orchestrator.json
+# has mode human and approved false), append one line per human prompt to
+# <project>/.superlite/human-replies.jsonl:
+#   {"t":<epoch ms>,"approves":true|false,"text":"<first 160 chars of the prompt>"}
+# approves is true when the prompt contains an approval phrase (approve, approved, yes, go ahead,
+# go for it, looks good, lgtm, proceed, ship it, do it) and none of: not, don't, dont, no, wait,
+# stop, but, change, instead (case-insensitive, whole words). Only this hook writes the file.
+# Bash builtins only (each external process costs ~250 ms on Windows). Never blocks: exit 0 always.
+
+IFS= read -r -d '' input   # builtin; returns 1 at EOF, which is fine
+
+# jstr KEY: first JSON string value for KEY, decoded, into REPLY (empty if absent).
+jstr() {
+  local re='"'"$1"'"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)"' s
+  REPLY=""
+  [[ $input =~ $re ]] || return 0
+  s="${BASH_REMATCH[1]}"
+  s="${s//\\\\/$'\x01'}"; s="${s//\\\"/\"}"; s="${s//\\n/ }"; s="${s//\\r/}"; s="${s//\\t/ }"; s="${s//\\\//\/}"
+  REPLY="${s//$'\x01'/\\}"
+}
+
+jstr cwd; proj="${CLAUDE_PROJECT_DIR:-${REPLY//\\//}}"
+[ -n "$proj" ] || proj="$PWD"
+sd="$proj/.superlite"
+[ -f "$sd/orchestrator.json" ] || exit 0
+IFS= read -r -d '' oj < "$sd/orchestrator.json"
+re_human='"mode"[[:space:]]*:[[:space:]]*"human"'
+re_unappr='"approved"[[:space:]]*:[[:space:]]*false'
+[[ $oj =~ $re_human && $oj =~ $re_unappr ]] || exit 0
+
+jstr prompt; text="$REPLY"
+lc="${text,,}"
+b='(^|[^[:alnum:]_])'; e='([^[:alnum:]_]|$)'
+re_yes="$b(approve|approved|yes|go[[:space:]]+ahead|go[[:space:]]+for[[:space:]]+it|looks[[:space:]]+good|lgtm|proceed|ship[[:space:]]+it|do[[:space:]]+it)$e"
+re_no="$b(not|don't|don’t|dont|no|wait|stop|but|change|instead)$e"
+approves=false
+[[ $lc =~ $re_yes ]] && ! [[ $lc =~ $re_no ]] && approves=true
+
+text="${text:0:160}"
+text="${text//\\/\\\\}"; text="${text//\"/\\\"}"
+now="${EPOCHREALTIME//[.,]/}"; now="${now:0:${#now}-3}"
+printf '{"t":%s,"approves":%s,"text":"%s"}\n' "$now" "$approves" "$text" >> "$sd/human-replies.jsonl" 2>/dev/null
+exit 0

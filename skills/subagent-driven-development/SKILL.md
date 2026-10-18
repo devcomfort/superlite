@@ -5,7 +5,7 @@ description: Use when executing a superlite plan that has a %% taskgraph. Runs a
 
 # Subagent-Driven Development
 
-You are the coordinator. You decide, dispatch and rule; scripts do everything with a definite answer; agents design, write, review and fix. Read each script's one-line output. One line of narration per tool call; no skill text in a brief.
+You are the coordinator. You decide, dispatch and rule; scripts do everything with a definite answer; agents design, write, review and fix. Read each script's one-line output. One line of narration per tool call.
 
 Shorthand (every agent brief states `SUPERLITE=<path>`):
 `SUPERLITE` = the plugin root, two levels above this skill's "Base directory for this skill: ..." path: `SUPERLITE="$(cd "<base dir>/../.." && pwd)"`, passing the base dir through `cygpath -u` first when that exists. `SL="$SUPERLITE/skills/subagent-driven-development/scripts/sl"`; always run it as `bash "$SL" ...`. `PLAN` = the plan file; pass `--plan $PLAN` everywhere. Exit 3 means no Python: `bash "$SL" incident add` it and continue.
@@ -18,7 +18,7 @@ Shorthand (every agent brief states `SUPERLITE=<path>`):
 
 - Branch `superlite/<topic>` if on the default branch (no worktree). Write the start SHA to `.superlite/progress.md` (`- start <sha>`). `commit_task` adds `.superlite/` to `.git/info/exclude` itself.
 - Wave 0 is never yours: `lint --stable` builds `.superlite/briefs/wave0.md` from the plan and prints `START FIRST:` with the Agent line for `superlite:implementer-haiku` (T0; `bash "$SL" wave0 --plan $PLAN` reprints it). Send it first in the same message as the stable set; commit with `commit_task T0`. No skeleton files by you; tasks do not wait for T0. Then `bash "$SL" plan_tools adapter --plan $PLAN`.
-- Prime now: `bash "$SL" build_prime --plan $PLAN --spec SPEC --sections "1,3"` prints `hash size` and writes `.superlite/prime.md`. Start the first ready tasks' agents now. Never retype the prime.
+- Prime now: `bash "$SL" build_prime --plan $PLAN --spec SPEC --sections "1,3"` prints `hash size` and writes `.superlite/prime.md`. Start the first ready tasks now. Never retype the prime.
 - Incidents: `.superlite/incidents.jsonl` (agents call `bash "$SL" incident add`); you log BLOCKED and NEEDS_CONTEXT with `--agent coordinator`.
 - Graphify: `bash "$SL" graphify_gate` prints JSON. `use` false: skip. Installed: `graphify update .`. `needs_install` and `allowed`: `uv tool install graphifyy`, `graphify extract . --code-only`. You alone run `graphify update .` after each package commits.
 
@@ -68,7 +68,7 @@ flowchart LR
 ## Coordinator batching
 
 - One message per turn: all dispatches, reviews, background starts.
-- Every test run is `run_tests ... --background`; read the summary, never wait, except the one `--wait` before the final commit.
+- Every test run is `run_tests ... --background`; never wait, except the one `--wait` before the final commit.
 
 ## Final review
 
@@ -86,7 +86,7 @@ flowchart TB
 1. Gate: every task committed, every review reported and committed, every seam `verified`.
 2. Build the packet now: `bash "$SL" plan_tools packet --plan $PLAN --base <start-sha>` uses the existing `.superlite/test-summary.json`, the probe results and the incidents, and writes `.superlite/review-packet.md`. Its header says `FAST PATH` or `REVIEW REQUIRED`. In the same message start `bash "$SL" run_tests --full --background`; do not wait for it.
 3. Start `superlite:final-reviewer` at the same moment, fresh, brief = `SUPERLITE=<path>` and "read .superlite/review-packet.md", nothing more. The tree stays frozen. It answers in one turn from the packet only: `Verdict: APPROVED` or `CHANGES_REQUESTED` plus `file:line - problem - fix - tier N` lines.
-4. Red suite lines are findings too. Send all to fixers (`fixing.md`: tier by understanding, split by file), then `commit_task Tn` per owning task and one more `run_tests --background`. Leftovers become a `Ruling:`; no second round.
+4. Red suite lines are findings too. Send all to fixers (`fixing.md`: tier by understanding, split by file), then `commit_task Tn` per owning task and one more `run_tests --background`. Leftovers become a `Ruling:`.
 5. Right before the final commit, `bash "$SL" run_tests --wait` once; green means freeze.
 
 ## Measure and budget
@@ -101,7 +101,7 @@ After a green suite: freeze. Archive `.superlite/incidents.jsonl` and `progress.
 
 Stop and ask only for: an irreversible or destructive operation; a security-sensitive action; an outward side effect (merge, push, publish); a plan so broken every path is a guess.
 
-**AI orchestrator** (`sl orchestrator status`; also user away, "decide yourself", pre-approved): never end your turn to wait. Take the safe path: defer the outward or destructive action, read a broken plan conservatively, record the ruling, keep going; list what you deferred. **Human orchestrator**: show the review plan, ask once, `bash "$SL" orchestrator approve --review PATH`, then write the machine plan from it; `lint --stable`, `dispatch`, `wave0`, `build_prime` refuse before (`orchestrator.md`).
+**AI orchestrator** (`sl orchestrator status`; also user away, "decide yourself"): never end your turn to wait. Take the safe path: defer the outward or destructive action, read a broken plan conservatively, record the ruling; list what you deferred. **Human orchestrator**: nothing is built, dispatched or written but the review plan before the human's approving reply; ask in plain text, end the turn, then `bash "$SL" orchestrator approve --review PATH` and the machine plan; `lint --stable`, `dispatch`, `wave0`, `build_prime` refuse before (`orchestrator.md`).
 
 ## Red flags
 

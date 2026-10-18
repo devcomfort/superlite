@@ -140,7 +140,7 @@ def test_other_tools_ignored(proj):
 def test_hooks_json_registers_hook():
     data = json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))
     e = data["hooks"]["PreToolUse"][1]
-    assert e["matcher"] == "Edit|Write|NotebookEdit|Bash|PowerShell"
+    assert e["matcher"] == "Edit|Write|NotebookEdit|Bash|PowerShell|Agent"
     assert e["hooks"][0]["command"] == 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/block-coordinator-edits"'
 
 

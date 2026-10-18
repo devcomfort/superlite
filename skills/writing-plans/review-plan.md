@@ -4,8 +4,10 @@ With a human orchestrator the plan the human reviews is written for a human: pla
 NOT the agent plan. After the yes the coordinator writes the machine plan (taskgraph, Produces/Consumes, `e.g.` examples,
 sizes) from it, with the header line `**Review plan:** <path>`. With an AI orchestrator there is no review plan.
 
-File: `docs/plans/<date>-<topic>.review.md`. Show the human the path and a five-line summary in chat, ask once, then run
-`sl orchestrator approve --review <path>` (records the path and its sha256 in `.superlite/orchestrator.json`).
+File: `docs/plans/<date>-<topic>.review.md`. Nothing is built, dispatched or written (except this file) before the human's approving
+reply. Show the human, in plain text and not with AskUserQuestion, the path, a five-line summary and "Reply approve to start, or tell me
+what to change", then END THE TURN. Only after the human's reply run `sl orchestrator approve --review <path>` (needs a fresh approving
+reply recorded by the hook; records the path and its sha256 in `.superlite/orchestrator.json`).
 
 ## Required sections, in this order
 
@@ -21,6 +23,13 @@ File: `docs/plans/<date>-<topic>.review.md`. Show the human the path and a five-
 8. `## Out of scope`: what this will not do.
 9. `## How we will know it works`: acceptance checks a human can verify.
 10. `## Rough time and cost`: a range from the sizes, labelled rough until the machine plan is linted.
+
+## One-page form (small requests)
+
+A small request also gets a review plan before any code: one page with `## Summary`, `## What will be built` (parts table), `## How it
+fits together` (one mermaid diagram of at most 12 nodes), `## Decisions you can change` (with defaults), `## How we will know it works`
+(acceptance checks) and `## Rough time and cost` (a rough estimate). Everything else in the required list may be left out when it has
+nothing to say.
 
 ## Example (shortened)
 

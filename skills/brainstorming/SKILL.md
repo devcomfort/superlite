@@ -11,7 +11,7 @@ Turn a request into an approved design with as little ceremony as the request al
 
 Announce it: "This looks bounded, so I'll ask one batch of questions and show a short design here." The user can override.
 
-- **Trivial** (a few tool calls: a typo, a rename, a one-line fix): do it. Exit this skill.
+- **Trivial** (a few tool calls: a typo, a rename, a one-line fix): do it. Exit this skill. With a human orchestrator nothing is built, not even a small request, before the human approves a review plan (a one-page form for small ones).
 - **Bounded** (a change to a flow that already exists in the repo): short in-chat design, one approval.
 - **Architectural** (a new project or subsystem, or changes to interfaces others depend on): one combined design and plan doc, one approval.
 - **Spike** ("can we...", "is it possible...", throwaway is fine): say what you will try in 2 sentences and try it. The output is an answer, not code you keep.
@@ -41,7 +41,7 @@ Write what you understood (separate what the user said from your assumptions), t
 
 1. With an AI orchestrator write ONE doc, `docs/plans/YYYY-MM-DD-<topic>.md`: the design above, then the plan. With a human orchestrator write the review plan instead (`<date>-<topic>.review.md`, template `../writing-plans/review-plan.md`); the machine plan comes after the yes. Invoke `superlite:writing-plans` for the plan half and append it to the same file. If the user named a different location, use theirs.
 2. Self-review inline: placeholders, contradictions, scope (one plan, or decompose?), and requirements that could be read two ways. Fix them in place. No review loop, no subagent.
-3. With a human orchestrator: give the review plan's path and a five-line summary, ask once for approval, batching its open choices; on the yes run `sl orchestrator approve --review <path>`, then write the machine plan from it (lint runs only after the yes). With an AI orchestrator skip the approval. Run `bash <skill-dir>/../subagent-driven-development/scripts/sl graphify_gate`; when it reports `needs_install: true`, add the Graphify install opt-in (`uv tool install graphifyy`) to that same question. Never install without a yes.
+3. With a human orchestrator ask in plain text, not AskUserQuestion (the human's typed reply is what the hook verifies): the review plan's path, a five-line summary and "Reply approve to start, or tell me what to change"; END THE TURN and do nothing until the human replies. Only then run `sl orchestrator approve --review <path>` and write the machine plan from it. With an AI orchestrator skip the approval. Run `bash <skill-dir>/../subagent-driven-development/scripts/sl graphify_gate`; when it reports `needs_install: true`, add the Graphify install opt-in (`uv tool install graphifyy`) to that same question. Never install without a yes.
 4. On approval, invoke `superlite:subagent-driven-development` once, in this session: this session is the one coordinator. It runs `lint --stable`, dispatches the stable tasks at once and patches only the FIX tasks.
 
 Until approval, only read-only exploration is allowed. No scaffolding, no dependency installs, no product code. Approval covers the doc as presented. If the user changes the design, revise and re-present once.

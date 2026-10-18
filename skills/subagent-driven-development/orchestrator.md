@@ -22,9 +22,12 @@ unattended signal (all mean AI). When no human can answer (a headless `claude -p
 ## The tool (`sl orchestrator`)
 - `set human|ai [--by NAME] [--ruling TEXT]` writes `.superlite/orchestrator.json` `{mode, approved, by, time}`
   (`approved` is true for AI, false for human until `approve`).
-- `approve [--by NAME] [--review PATH]` records the approval (human mode only; exit 2 otherwise). `--review` also records the review
-  plan's path and sha256 in `orchestrator.json` (`review_path`, `review_sha256`); a missing file fails with exit 2; without `--review`
-  nothing else changes. `status` and `finish` print the review plan path.
+- `approve --review PATH [--by NAME]` records the approval. Human mode only (exit 2 otherwise); `--review` is required (exit 2: write the
+  review plan first; a missing file also exit 2); and a real human reply is required: `.superlite/human-replies.jsonl` (written only by the
+  UserPromptSubmit hook, `{t, approves, text}` per human prompt while unapproved) must hold an `approves: true` line later than the review
+  file's modification time, else exit 3 `BLOCKED: no human approval reply since the review plan was written; show the plan, ask the human to
+  reply approve, end your turn`. The path and sha256 go to `orchestrator.json` (`review_path`, `review_sha256`). AI mode never needs `approve`.
+  `status [--review PATH]` and `finish` print the review plan path and whether an approving reply exists.
 - `status` prints one line: `orchestrator: human, awaiting approval` / `human, approved <time> by <name>` / `AI` / `not set (ungated)`.
 - Gate: in human mode without an approval `plan_tools lint --stable`, `dispatch`, `wave0` and `build_prime` exit 4 with
   `BLOCKED: human orchestrator selected, show the plan, ask for approval, then run sl orchestrator approve`.
@@ -32,6 +35,13 @@ unattended signal (all mean AI). When no human can answer (a headless `claude -p
   runs behave as before. `finish` prints the mode line (with the approval time in human mode).
 - The gate stops the tools, not the model: the coordinator could still call `approve` itself. Only a human answer to the
   approval question may precede `approve`.
+
+## The hard rule (human mode)
+No build starts until the human approves the first plan, small requests included. Nothing is built, dispatched or written (except the
+review plan) before the human's approving reply. The approval is asked in PLAIN TEXT, never with AskUserQuestion, because the typed reply
+is what the hook verifies: show the review plan path, a five-line summary and "Reply approve to start, or tell me what to change", then end
+the turn. Only after the reply run `approve --review`. `set human` writes `approved: false`. The hooks (coord-guard) deny code writes and
+superlite agent dispatch while the mode is human and unapproved, and deny the model writing `orchestrator.json` or `human-replies.jsonl`.
 
 ## Benchmarks
 Every prompt file under `bench/` (`prompt*.md`, `tasks/*/prompt*.md`) ends with `Orchestrator: AI, do not ask me to choose or to approve.`

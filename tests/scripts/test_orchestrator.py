@@ -10,7 +10,25 @@ from test_routing import mech_plan
 ORCH = SCRIPTS / "orchestrator.py"
 REPO = SCRIPTS.parents[2]
 LINE = "Orchestrator: AI, do not ask me to choose or to approve."
+NO_REPLY = ("BLOCKED: no human approval reply since the review plan was written; show the plan, ask the human to reply approve, "
+            "end your turn")
 BLOCK = "BLOCKED: human orchestrator selected, show the plan, ask for approval, then run sl orchestrator approve"
+
+
+def reply(tmp_path, review, approves=True, offset_ms=5000, text="approve"):
+    """One line of .superlite/human-replies.jsonl as the UserPromptSubmit hook writes it (t relative to the review file's mtime)."""
+    t = int(Path(review).stat().st_mtime * 1000) + offset_ms
+    f = tmp_path / ".superlite" / "human-replies.jsonl"
+    f.parent.mkdir(exist_ok=True)
+    with f.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps({"t": t, "approves": approves, "text": text}) + "\n")
+
+
+def approve_human(tmp_path, by="human", review=None):
+    """A real approval: a review plan, a fresh approving human reply, then approve --review."""
+    f = review or review_file(tmp_path)
+    reply(tmp_path, f)
+    return orch(tmp_path, "approve", "--by", by, "--review", f)
 
 
 def orch(tmp_path, *args):
@@ -35,7 +53,7 @@ def test_each_gated_tool_is_blocked_in_human_mode_and_runs_after_approve(tmp_pat
         assert cp.returncode == 4, (name, cp.both)
         assert BLOCK in cp.err and len(cp.err.strip().splitlines()) == 1, name
     assert not (tmp_path / ".superlite" / "stable.json").exists() and not (tmp_path / ".superlite" / "briefs").exists()
-    ap = orch(tmp_path, "approve", "--by", "carol")
+    ap = approve_human(tmp_path, "carol")
     assert ap.returncode == 0 and "human, approved" in ap.out and "carol" in ap.out
     for name, cp in gated(tmp_path, p).items():
         assert cp.returncode in (0, 1) and BLOCK not in cp.both, (name, cp.both)  # lint may exit 1 for FIX tasks, never 4
@@ -73,7 +91,7 @@ def test_status_lines(tmp_path):
     assert "not set (ungated)" in orch(tmp_path, "status").out
     orch(tmp_path, "set", "human")
     assert "human, awaiting approval" in orch(tmp_path, "status").out
-    orch(tmp_path, "approve")
+    approve_human(tmp_path)
     assert "human, approved" in orch(tmp_path, "status").out
     orch(tmp_path, "set", "ai")
     assert orch(tmp_path, "status").out.startswith("orchestrator: AI")
@@ -96,7 +114,7 @@ def test_finish_reports_the_mode_and_the_approval_time(tmp_path):
     assert "orchestrator: not set (ungated)" in finish(tmp_path)
     orch(tmp_path, "set", "human")
     assert "orchestrator: human, awaiting approval" in finish(tmp_path)
-    orch(tmp_path, "approve", "--by", "dana")
+    approve_human(tmp_path, "dana")
     out = finish(tmp_path)
     st = json.loads((tmp_path / ".superlite" / "orchestrator.json").read_text(encoding="utf-8"))
     assert f"orchestrator: human, approved {st['approved_time']} by dana" in out
@@ -144,6 +162,7 @@ def review_file(tmp_path, name="plan.review.md"):
 def test_approve_review_records_path_and_sha256(tmp_path):
     orch(tmp_path, "set", "human")
     f = review_file(tmp_path)
+    reply(tmp_path, f)
     cp = orch(tmp_path, "approve", "--by", "erin", "--review", f)
     assert cp.returncode == 0, cp.both
     st = json.loads((tmp_path / ".superlite" / "orchestrator.json").read_text(encoding="utf-8"))
@@ -161,16 +180,76 @@ def test_approve_review_with_a_missing_file_fails_and_does_not_approve(tmp_path)
     assert "awaiting approval" in orch(tmp_path, "status").out
 
 
-def test_approve_without_review_is_unchanged(tmp_path):
+def state(tmp_path):
+    return json.loads((tmp_path / ".superlite" / "orchestrator.json").read_text(encoding="utf-8"))
+
+
+def test_approve_refuses_without_review(tmp_path):
     orch(tmp_path, "set", "human")
+    f = review_file(tmp_path)
+    reply(tmp_path, f)  # even with a fresh approving reply
     cp = orch(tmp_path, "approve", "--by", "frank")
-    st = json.loads((tmp_path / ".superlite" / "orchestrator.json").read_text(encoding="utf-8"))
-    assert cp.returncode == 0 and st["approved"] is True and "review_path" not in st and "review plan" not in cp.out
+    assert cp.returncode == 2 and "write the review plan first" in cp.err
+    assert state(tmp_path)["approved"] is False
+
+
+def test_approve_refuses_without_any_human_reply(tmp_path):
+    orch(tmp_path, "set", "human")
+    f = review_file(tmp_path)
+    cp = orch(tmp_path, "approve", "--review", f)
+    assert cp.returncode == 3 and cp.err.strip() == NO_REPLY
+    assert state(tmp_path)["approved"] is False and "review_path" not in state(tmp_path)
+
+
+def test_approve_refuses_a_stale_reply_older_than_the_review_plan(tmp_path):
+    orch(tmp_path, "set", "human")
+    f = review_file(tmp_path)
+    reply(tmp_path, f, offset_ms=-60_000)  # the human said approve before the plan was (re)written
+    cp = orch(tmp_path, "approve", "--review", f)
+    assert cp.returncode == 3 and "no human approval reply since the review plan was written" in cp.err
+    assert "no qualifying human reply yet" in orch(tmp_path, "status", "--review", f).out
+
+
+def test_approve_refuses_a_non_approving_reply(tmp_path):
+    orch(tmp_path, "set", "human")
+    f = review_file(tmp_path)
+    reply(tmp_path, f, approves=False, text="change the storage to a database")
+    cp = orch(tmp_path, "approve", "--review", f)
+    assert cp.returncode == 3 and state(tmp_path)["approved"] is False
+
+
+def test_approve_accepts_a_fresh_approving_reply_after_a_changing_one(tmp_path):
+    orch(tmp_path, "set", "human")
+    f = review_file(tmp_path)
+    reply(tmp_path, f, approves=False, offset_ms=1000, text="use files")
+    reply(tmp_path, f, approves=True, offset_ms=9000, text="approve")
+    cp = orch(tmp_path, "approve", "--by", "gina", "--review", f)
+    assert cp.returncode == 0, cp.both
+    assert state(tmp_path)["approved"] is True and state(tmp_path)["approved_by"] == "gina"
+
+
+def test_status_says_whether_an_approving_reply_exists(tmp_path):
+    orch(tmp_path, "set", "human")
+    assert "no approving human reply yet" in orch(tmp_path, "status").out
+    f = review_file(tmp_path)
+    assert "no qualifying human reply yet" in orch(tmp_path, "status", "--review", f).out
+    reply(tmp_path, f)
+    out = orch(tmp_path, "status", "--review", f).out
+    assert "awaiting approval" in out and "approving reply at" in out
+
+
+def test_ai_mode_needs_no_reply_and_no_approve(tmp_path):
+    p = mech_plan(tmp_path, 2)
+    orch(tmp_path, "set", "ai")
+    for name, cp in gated(tmp_path, p).items():
+        assert BLOCK not in cp.both, (name, cp.both)
+    assert orch(tmp_path, "approve").returncode == 2  # approve is for human mode only
 
 
 def test_status_and_finish_show_the_review_plan_path(tmp_path):
     orch(tmp_path, "set", "human")
     f = review_file(tmp_path)
+    reply(tmp_path, f)
     orch(tmp_path, "approve", "--review", f)
     path = str(f).replace("\\", "/")
     assert f"review plan {path}" in orch(tmp_path, "status").out
@@ -204,3 +283,27 @@ def test_skills_mention_both_phases_and_keep_their_caps():
     assert len((skills / "using-superlite" / "SKILL.md").read_text(encoding="utf-8")) <= 2000 and len(sdd) <= 11600
     readme = (REPO / "README.md").read_text(encoding="utf-8")
     assert "review plan" in readme.lower() and "You approve first" in readme
+
+
+def test_texts_state_the_hard_rule_plain_text_approval_and_the_small_form():
+    skills = REPO / "skills"
+    plans = (skills / "writing-plans" / "SKILL.md").read_text(encoding="utf-8")
+    brain = (skills / "brainstorming" / "SKILL.md").read_text(encoding="utf-8")
+    sdd = (skills / "subagent-driven-development" / "SKILL.md").read_text(encoding="utf-8")
+    ref = (skills / "subagent-driven-development" / "orchestrator.md").read_text(encoding="utf-8")
+    review = REVIEW.read_text(encoding="utf-8")
+    for text in (plans, brain):
+        assert "not AskUserQuestion" in text and "END THE TURN" in text
+        assert "Reply approve to start, or tell me what to change" in text
+    assert "Nothing is built, dispatched or written except this file" in plans and "small requests too" in plans
+    assert "even a small request" in brain and "approved review plan" in (skills / "using-superlite" / "SKILL.md").read_text(encoding="utf-8")
+    assert "before the human's approving reply" in sdd and "plain text" in sdd
+    assert "human-replies.jsonl" in ref and "exit 3" in ref and "The hard rule (human mode)" in ref
+    assert "## One-page form (small requests)" in review and "Reply approve to start" in review
+    assert "the orchestrator-choice" not in brain  # the choice itself stays an AskUserQuestion batch
+    assert "ONE `AskUserQuestion` call" in brain and "Human orchestrator: I approve the plan before it runs" in brain
+
+
+def test_readme_has_the_human_mode_sentence():
+    readme = (REPO / "README.md").read_text(encoding="utf-8")
+    assert "nothing is built, dispatched or written (except the review plan) until you reply approve" in readme
