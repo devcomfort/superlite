@@ -1,18 +1,129 @@
-# superlite
+<p align="center">
+  <img src="assets/superlite-logo.svg" width="160" alt="superlite: a feather made of neurons">
+</p>
 
-A plugin for Claude Code and the other coding-agent harnesses superpowers supports (see Installation). It keeps the structure of [superpowers](https://github.com/obra/superpowers) (plugin layout, SessionStart hook, core lifecycle skills) with far less process, so the default flow is much faster at similar quality.
+<h1 align="center">superlite</h1>
 
-## Why
+<p align="center">
+  <b>Hand an agent a spec. Come back to finished, tested work.</b><br>
+  An autonomous, feather-light build workflow for Claude Code, held together by scripts and hooks instead of good intentions.
+</p>
 
-Profiling superpowers 6.4.1 showed where the time and money go:
+<p align="center">
+  <img alt="license" src="https://img.shields.io/badge/license-MIT-6366f1">
+  <img alt="Claude Code plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-2dd4bf">
+  <img alt="parallel agents" src="https://img.shields.io/badge/parallel%20agents-up%20to%2018-c084fc">
+  <img alt="gated by code" src="https://img.shields.io/badge/gated%20by-code%2C%20not%20prompts-6366f1">
+</p>
 
-- 8-12 human gates per feature (one question per message, section-by-section approvals).
-- Plans that contain full code for every task, which a second model then transcribes.
-- Strictly sequential subagent execution with per-task reviews and long fix loops.
-- The full test suite re-run by several skills.
-- About 3KB injected at session start.
+---
 
-Superlite uses one approval gate, plans that carry contracts instead of code, a task graph that runs ready work in parallel, selective or batched review plus one fresh Opus final review, scripts instead of agents for mechanical steps, and short reports. The session hook injects about 1KB.
+## What it is
+
+superlite plans a build, splits it into tasks that can run side by side, hands each task to the cheapest agent that can do it well, checks the seams, and reviews the result. You decide **who orchestrates**: you, or the AI.
+
+- **Autonomous.** Describe the project, pick the AI orchestrator, and walk away. Decisions it has to make are recorded as rulings, not asked as questions.
+- **Fast.** Up to 18 agents at once, a plan written for parallelism, and mechanical work on Haiku.
+- **Gated by code.** The rules that matter are enforced by hooks and scripts that block the wrong move, not by a prompt that asks nicely.
+
+### Not a rival to superpowers
+
+superlite is **not a competitor** to [superpowers](https://github.com/obra/superpowers). superpowers is a careful, collaborative workflow that keeps a human close to every step, and it is excellent at that. superlite starts from its ideas (the plugin layout, the session-start hook, the lifecycle skills, with credit) and tunes them for a different job: **autonomous development, at speed**. If you want to steer each step, use superpowers. If you want to hand over a spec and come back to working code, use superlite. Pick one per session.
+
+---
+
+## It is fast
+
+Same machine, same task: build a Python site generator and a spreadsheet engine from one spec (`sitegen` + `minisheet`, 177 hidden tests), headless on Opus.
+
+| What we measured | superpowers | superlite |
+|---|---|---|
+| Wall-clock to a finished build | 33.6 min (stock, 3 runs: 21.2 / 31.9 / 47.6)<br>23.5 min (orchestrated, 3 runs) | **16.1 min** |
+| Faster than superpowers | | **52%** vs stock, **31%** vs orchestrated |
+| Fastest-to-slowest spread, 3 runs | 26.4 min | **9.1 min** |
+| Agents working at once | 3 to 4 | **up to 18** |
+| Hidden tests passed | 177 / 177 | 177 / 177 (a tie, at higher speed) |
+| Earlier 9-module benchmark (1 run each) | 34.4 min, $8.15 | **8.8 min, $3.28** |
+| superlite against its own first version | 26.9 min | **16.1 min** (40% faster) |
+
+And it is not tied to one language. A TypeScript site generator went from spec to 132 / 132 hidden tests in **8.5 minutes for $3.39**.
+
+<sub>The 16.1 min figure is one run of the current build. The superpowers figures, the spread row (3 runs of each, on an earlier superlite build) and the 9-module row (the first version, 1 run each) come from earlier runs on the same machine, so treat the gaps as indications, not a statistical proof. superlite spends more than orchestrated superpowers on this task ($9.38 against $6.89) and scores lower on the extra robustness probes (4 of 7 against about 5.7 of 7). Details, runs and caveats: [bench/](bench/) and the Benchmark section below.</sub>
+
+---
+
+## Gated by code, not by prompts
+
+Instructions drift. Scripts and hooks do not. These gates run on every build:
+
+| Gate | What it enforces | How |
+|---|---|---|
+| **The coordinator cannot write code** | Every change goes to a fix-only or implementer agent, by tier; the block message says which | `block-coordinator-edits` hook |
+| **No unsafe kills** | No `pkill` or `taskkill /IM`; only PIDs the run started | `block-unsafe-kill` hook |
+| **Tests never block the coordinator** | A raw `pytest`, `npm test`, `go test` and so on is rewritten into a background `sl run_tests` | `rewrite-test-runs` hook |
+| **A plan must lint before work starts** | Stable tasks dispatch at once; others wait with a reason. Size band, frozen interfaces, and chain rulings that must carry the id lint printed | `lint --stable` |
+| **Same plan, same agents** | Task features pick the agent tier from `routing.json`; Haiku only for mechanical tasks off the critical path, never for fixes | `routing.py` |
+| **Agents stay in their tier** | A task goes only to an idle agent of its own tier; nothing queues behind a busy one | `dispatch` |
+| **Cost caps are enforced** | Warns at 70% of the cap; over the cap it stops optional work | `sl budget` |
+| **Every run is measured** | Each agent's tokens, cost and time are captured automatically and feed the next run's predictions | capture hooks, `~/.superlite/history.jsonl` |
+| **No agent spawns agents** | Subagents get explicit tool lists with no `Agent` | agent definitions |
+
+---
+
+## Pick how to use it
+
+| Situation | Say something like | What happens |
+|---|---|---|
+| **MVP, a new project** | "Build me a static site generator from this spec" | One batch of questions, a plan, then parallel tasks on Sonnet and Haiku, package reviews and one fresh final review |
+| **A feature on existing code** | "Add CSV export with column widths to the existing app" | The same flow, with seam checks between the new and the existing code. On a large codebase it offers to install Graphify (never without your yes) |
+| **Debug** | "This test fails on leap days: find the root cause and fix it" | `systematic-debugging` finds the cause first; fixes go to fix-only agents by tier, each leaving a note, and escalate after two failed rounds |
+| **A small change** | "Rename `build` to `render` everywhere" | Small work stays inline, with a reviewer always |
+| **Review and harden** | "Review this branch and fix what you find" | Package reviewers fix their own findings; the final reviewer reports findings with tiers and never edits |
+| **Hands off** | "Build X. I am away, decide yourself" | The AI orchestrator plans, lints, dispatches and rules on open choices without stopping |
+| **Ship it** | "We are done: finish the branch" | Verification first, then merge or PR options. It never pushes without you |
+
+**Who orchestrates.** With a human orchestrator you validate the whole plan, shown with its predicted schedule, **before** it is linted and sent off. With the AI orchestrator it does everything itself.
+
+---
+
+## Install
+
+You need Claude Code, git, Python 3.10 or newer (the tools are Python; the project you build can be in any language), and `bash` (Git Bash on Windows). `uv` is optional.
+
+```
+/plugin marketplace add iha2/superlite
+/plugin install superlite@superlite-dev
+```
+
+Or load a local checkout for one session: `claude --plugin-dir <path-to-superlite>`
+
+Open a fresh session and send `Let's make a react todo list`. A working install starts `brainstorming` before any code is written. Installs for Codex, Cursor, Gemini CLI, OpenCode and the other harnesses are in [Installation](#installation) below.
+
+## Use it
+
+1. **Describe what you want.** A paragraph or a spec file is enough.
+2. **Choose the orchestrator** when asked: you validate the plan, or the AI does everything.
+3. **Let it run.** Watch `.superlite/` in your project: `progress.md` has the rulings and the log, `test-summary.json` the latest test result, `metrics.jsonl` and the run history the time and cost per agent.
+
+```mermaid
+flowchart LR
+  A([Your request]) --> B[Brainstorm<br/>one batch of questions]
+  B --> C[Plan<br/>contracts, not code]
+  C --> D{"lint --stable<br/>the gate"}
+  D --> E[Wave 0<br/>skeleton on Haiku]
+  D --> F[Parallel tasks<br/>routed by tier]
+  E --> G[Package reviews]
+  F --> G
+  G --> H[Final review<br/>findings only]
+  H --> I[Fix-only agents<br/>by tier]
+  I --> J([Done, measured])
+```
+
+---
+
+## Reference
+
+The rest of this file is the reference: skills and agents, hooks, tools, config, per-harness installation, the benchmark harness and the task list.
 
 ## Skills
 
