@@ -1016,7 +1016,7 @@ def checkout_commit(root: Path, sha: str) -> tuple[Path, Path | None]:  # O(tree
     import io  # O(1)
     import tarfile  # O(1)
     with tarfile.open(fileobj=io.BytesIO(arc.stdout)) as tf:  # O(archive bytes) open
-        tf.extractall(tree)  # O(archive bytes) extract
+        tf.extractall(tree, **({"filter": "data"} if hasattr(tarfile, "data_filter") else {}))  # O(archive bytes) extract
     return tree, None  # O(1)
 
 
