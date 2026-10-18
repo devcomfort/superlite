@@ -41,7 +41,7 @@ flowchart LR
   L -- issues, exit 1 --> F[fix the plan] --> L
 ```
 
-Per approved section (tasks with `**Status:** draft` and their dependents are skipped; dispatch each section as it is approved, while the next is discussed): run `bash "$SL" plan_tools schedule --plan $PLAN --insert` (target from the plan header), then `bash "$SL" plan_tools lint --plan $PLAN --spec SPEC`. Lint exit 1 lists real defects (placeholders, Consumes without Produces, oversize tasks): fix and rerun. `MISSED TARGET: ... critical path T1 -> T5` is a warning, exit 0. Split or stub the named tasks and rerun `schedule --insert`, or accept it with `Ruling: accept predicted <N> min - <why sequential> - <cost>`. `taskgraph` warnings (`mergeable`) are handled by ruling.
+One coordinator for the whole plan; each approved section only adds its tasks to its queue (draft tasks and their dependents are skipped). Per approved section: run `bash "$SL" plan_tools schedule --plan $PLAN --insert` (target from the plan header), then `bash "$SL" plan_tools lint --plan $PLAN --spec SPEC`. Lint exit 1 lists real defects (placeholders, Consumes without Produces, oversize tasks): fix and rerun. `MISSED TARGET: ... critical path T1 -> T5` is a warning, exit 0. Split or stub the named tasks and rerun `schedule --insert`, or accept it with `Ruling: accept predicted <N> min - <why sequential> - <cost>`. `taskgraph` warnings (`mergeable`) are handled by ruling.
 
 ## The scheduling loop
 
