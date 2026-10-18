@@ -1,0 +1,289 @@
+{
+  "config": {
+    "run_dir": "C:\\Users\\CWogu\\source\\repos\\superlite-bench-runs\\combo-superlite-x1",
+    "commit": "533bf3c8e0e6b4db407d708fc28665b53dcee2e8",
+    "tasks": [
+      "T8"
+    ],
+    "selected_because": "marked `Kind: mechanical` in the plan",
+    "n": 3,
+    "cost_cap_usd": 2.0,
+    "timeout_s": 300,
+    "verify": "uv run --no-project --with pytest python -m pytest {tests} -q -p no:cacheprovider",
+    "hidden": "C:\\Users\\CWogu\\source\\repos\\superlite\\bench\\tasks\\combo\\hidden",
+    "setup": "",
+    "per_run_cap_usd": {
+      "haiku": 0.133,
+      "sonnet": 0.533
+    },
+    "out": "C:\\Users\\CWogu\\source\\repos\\superlite\\bench\\results\\mechanical-ab-combo-superlite-x1-20261018-131942"
+  },
+  "wall_s": 78.4,
+  "total_cost_usd": 0.5049,
+  "table": [
+    {
+      "task": "T8",
+      "model": "haiku",
+      "runs": 3,
+      "passed": 0,
+      "pass_rate": 0.0,
+      "median_s": 49.2,
+      "median_cost_usd": 0.01,
+      "median_tool_calls": 6,
+      "median_out_tokens": 4232,
+      "median_ctx_tokens": 91720,
+      "failures": [
+        "#1: BLOCKED: Status: BLOCKED Files changed: none. `src/minisheet/refs.py` and `tests/minisheet/test_refs.py` are untouched. Test resu",
+        "#2: BLOCKED: Status: BLOCKED Files changed: none. I did not write `tests/minisheet/test_refs.py` or `src/minisheet/refs.py`. Test com",
+        "#3: BLOCKED: Status: BLOCKED Files changed: none. I did not write `tests/minisheet/test_refs.py` or `src/minisheet/refs.py`. Test com"
+      ]
+    },
+    {
+      "task": "T8",
+      "model": "sonnet",
+      "runs": 3,
+      "passed": 0,
+      "pass_rate": 0.0,
+      "median_s": 55.2,
+      "median_cost_usd": 0.16,
+      "median_tool_calls": 9,
+      "median_out_tokens": 4877,
+      "median_ctx_tokens": 116454,
+      "failures": [
+        "#1: BLOCKED: I'm blocked. A `block-coordinator-edits` pre-tool hook is rejecting every write I make to `src/minisheet/refs.py` and `t",
+        "#2: BLOCKED: Status: BLOCKED. I haven't written any code. A `block-coordinator-edits` hook from the superlite plugin rejects every wr",
+        "#3: BLOCKED: - Status: BLOCKED - Files changed: none. `src/minisheet/refs.py` and `tests/minisheet/test_refs.py` are untouched. - Tes"
+      ]
+    }
+  ],
+  "runs": [
+    {
+      "task": "T8",
+      "model": "haiku",
+      "rep": 1,
+      "budget_usd": 0.133,
+      "pid": 53600,
+      "timed_out": false,
+      "duration_s": 49.2,
+      "tokens": {
+        "in": 14,
+        "out": 4232,
+        "cache_read": 79749,
+        "cache_write": 11957
+      },
+      "cost_usd": 0.0053,
+      "tool_calls": 6,
+      "turns": 7,
+      "subtype": "success",
+      "status": "BLOCKED",
+      "reply": "Status: BLOCKED Files changed: none. `src/minisheet/refs.py` and `tests/minisheet/test_refs.py` are untouched. Test result: not run. I did not reach the red step. Concern: the `PreToolUse` hook `block-coordinator-edits` rejected my `Write` ",
+      "models": [
+        "claude-haiku-5-5"
+      ],
+      "own_ok": false,
+      "own_tail": "ERROR: file or directory not found: tests/minisheet/test_refs.py",
+      "hidden_total": 6,
+      "hidden_passed": 0,
+      "hidden_failed": [
+        "suite_minisheet.test_refs::test_parse_ref_simple",
+        "suite_minisheet.test_refs::test_parse_ref_absolute_lowercase_max_bounds",
+        "suite_minisheet.test_refs::test_parse_range_normalizes_corners_and_dollar_flags",
+        "suite_minisheet.test_refs::test_to_a1_absolute_column",
+        "suite_minisheet.test_refs::test_parse_ref_rejects_invalid"
+      ],
+      "out_of_scope": [],
+      "passed": false,
+      "fail_reason": "BLOCKED: Status: BLOCKED Files changed: none. `src/minisheet/refs.py` and `tests/minisheet/test_refs.py` are untouched. Test resu"
+    },
+    {
+      "task": "T8",
+      "model": "haiku",
+      "rep": 2,
+      "budget_usd": 0.133,
+      "pid": 41152,
+      "timed_out": false,
+      "duration_s": 43.1,
+      "tokens": {
+        "in": 12,
+        "out": 3701,
+        "cache_read": 73493,
+        "cache_write": 12987
+      },
+      "cost_usd": 0.0052,
+      "tool_calls": 5,
+      "turns": 6,
+      "subtype": "success",
+      "status": "BLOCKED",
+      "reply": "Status: BLOCKED Files changed: none. I did not write `tests/minisheet/test_refs.py` or `src/minisheet/refs.py`. Test command and result: not run. Nothing was written, so there was nothing to test. Concern: the `PreToolUse:Write` hook `block",
+      "models": [
+        "claude-haiku-5-5"
+      ],
+      "own_ok": false,
+      "own_tail": "ERROR: file or directory not found: tests/minisheet/test_refs.py",
+      "hidden_total": 6,
+      "hidden_passed": 0,
+      "hidden_failed": [
+        "suite_minisheet.test_refs::test_parse_ref_simple",
+        "suite_minisheet.test_refs::test_parse_ref_absolute_lowercase_max_bounds",
+        "suite_minisheet.test_refs::test_parse_range_normalizes_corners_and_dollar_flags",
+        "suite_minisheet.test_refs::test_to_a1_absolute_column",
+        "suite_minisheet.test_refs::test_parse_ref_rejects_invalid"
+      ],
+      "out_of_scope": [],
+      "passed": false,
+      "fail_reason": "BLOCKED: Status: BLOCKED Files changed: none. I did not write `tests/minisheet/test_refs.py` or `src/minisheet/refs.py`. Test com"
+    },
+    {
+      "task": "T8",
+      "model": "haiku",
+      "rep": 3,
+      "budget_usd": 0.133,
+      "pid": 52084,
+      "timed_out": false,
+      "duration_s": 71.3,
+      "tokens": {
+        "in": 14,
+        "out": 5299,
+        "cache_read": 77773,
+        "cache_write": 19020
+      },
+      "cost_usd": 0.0072,
+      "tool_calls": 7,
+      "turns": 8,
+      "subtype": "success",
+      "status": "BLOCKED",
+      "reply": "Status: BLOCKED Files changed: none. I did not write `tests/minisheet/test_refs.py` or `src/minisheet/refs.py`. Test command and result: not run. The first step was to write the red tests, and the write was blocked. Concerns: - The `PreTool",
+      "models": [
+        "claude-haiku-5-5"
+      ],
+      "own_ok": false,
+      "own_tail": "ERROR: file or directory not found: tests/minisheet/test_refs.py",
+      "hidden_total": 6,
+      "hidden_passed": 0,
+      "hidden_failed": [
+        "suite_minisheet.test_refs::test_parse_ref_simple",
+        "suite_minisheet.test_refs::test_parse_ref_absolute_lowercase_max_bounds",
+        "suite_minisheet.test_refs::test_parse_range_normalizes_corners_and_dollar_flags",
+        "suite_minisheet.test_refs::test_to_a1_absolute_column",
+        "suite_minisheet.test_refs::test_parse_ref_rejects_invalid"
+      ],
+      "out_of_scope": [],
+      "passed": false,
+      "fail_reason": "BLOCKED: Status: BLOCKED Files changed: none. I did not write `tests/minisheet/test_refs.py` or `src/minisheet/refs.py`. Test com"
+    },
+    {
+      "task": "T8",
+      "model": "sonnet",
+      "rep": 1,
+      "budget_usd": 0.533,
+      "pid": 28824,
+      "timed_out": false,
+      "duration_s": 45.0,
+      "tokens": {
+        "in": 12,
+        "out": 4767,
+        "cache_read": 89295,
+        "cache_write": 25468
+      },
+      "cost_usd": 0.1585,
+      "tool_calls": 8,
+      "turns": 9,
+      "subtype": "success",
+      "status": "BLOCKED",
+      "reply": "I'm blocked. A `block-coordinator-edits` pre-tool hook is rejecting every write I make to `src/minisheet/refs.py` and `tests/minisheet/test_refs.py`. It treats this session as the coordinator, and the Bash, Edit and Write tools all hit it. ",
+      "models": [
+        "claude-sonnet-5-5"
+      ],
+      "own_ok": false,
+      "own_tail": "ERROR: file or directory not found: tests/minisheet/test_refs.py",
+      "hidden_total": 6,
+      "hidden_passed": 0,
+      "hidden_failed": [
+        "suite_minisheet.test_refs::test_parse_ref_simple",
+        "suite_minisheet.test_refs::test_parse_ref_absolute_lowercase_max_bounds",
+        "suite_minisheet.test_refs::test_parse_range_normalizes_corners_and_dollar_flags",
+        "suite_minisheet.test_refs::test_to_a1_absolute_column",
+        "suite_minisheet.test_refs::test_parse_ref_rejects_invalid"
+      ],
+      "out_of_scope": [],
+      "passed": false,
+      "fail_reason": "BLOCKED: I'm blocked. A `block-coordinator-edits` pre-tool hook is rejecting every write I make to `src/minisheet/refs.py` and `t"
+    },
+    {
+      "task": "T8",
+      "model": "sonnet",
+      "rep": 2,
+      "budget_usd": 0.533,
+      "pid": 55560,
+      "timed_out": false,
+      "duration_s": 59.9,
+      "tokens": {
+        "in": 12,
+        "out": 4877,
+        "cache_read": 90407,
+        "cache_write": 26035
+      },
+      "cost_usd": 0.162,
+      "tool_calls": 9,
+      "turns": 10,
+      "subtype": "success",
+      "status": "BLOCKED",
+      "reply": "Status: BLOCKED. I haven't written any code. A `block-coordinator-edits` hook from the superlite plugin rejects every write I try. It treats me as the coordinator and says only `docs/plans/**`, `SPEC*.md`, `docs/**/*.md` and `.superlite/**`",
+      "models": [
+        "claude-sonnet-5-5"
+      ],
+      "own_ok": false,
+      "own_tail": "ERROR: file or directory not found: tests/minisheet/test_refs.py",
+      "hidden_total": 6,
+      "hidden_passed": 0,
+      "hidden_failed": [
+        "suite_minisheet.test_refs::test_parse_ref_simple",
+        "suite_minisheet.test_refs::test_parse_ref_absolute_lowercase_max_bounds",
+        "suite_minisheet.test_refs::test_parse_range_normalizes_corners_and_dollar_flags",
+        "suite_minisheet.test_refs::test_to_a1_absolute_column",
+        "suite_minisheet.test_refs::test_parse_ref_rejects_invalid"
+      ],
+      "out_of_scope": [],
+      "passed": false,
+      "fail_reason": "BLOCKED: Status: BLOCKED. I haven't written any code. A `block-coordinator-edits` hook from the superlite plugin rejects every wr"
+    },
+    {
+      "task": "T8",
+      "model": "sonnet",
+      "rep": 3,
+      "budget_usd": 0.533,
+      "pid": 51384,
+      "timed_out": false,
+      "duration_s": 55.2,
+      "tokens": {
+        "in": 14,
+        "out": 4999,
+        "cache_read": 115502,
+        "cache_write": 26273
+      },
+      "cost_usd": 0.1667,
+      "tool_calls": 10,
+      "turns": 11,
+      "subtype": "success",
+      "status": "BLOCKED",
+      "reply": "- Status: BLOCKED - Files changed: none. `src/minisheet/refs.py` and `tests/minisheet/test_refs.py` are untouched. - Tests: not run, because nothing was written. - Cause: the `block-coordinator-edits` hook from the `superlite@inline` plugin",
+      "models": [
+        "claude-sonnet-5-5"
+      ],
+      "own_ok": false,
+      "own_tail": "ERROR: file or directory not found: tests/minisheet/test_refs.py",
+      "hidden_total": 6,
+      "hidden_passed": 0,
+      "hidden_failed": [
+        "suite_minisheet.test_refs::test_parse_ref_simple",
+        "suite_minisheet.test_refs::test_parse_ref_absolute_lowercase_max_bounds",
+        "suite_minisheet.test_refs::test_parse_range_normalizes_corners_and_dollar_flags",
+        "suite_minisheet.test_refs::test_to_a1_absolute_column",
+        "suite_minisheet.test_refs::test_parse_ref_rejects_invalid"
+      ],
+      "out_of_scope": [],
+      "passed": false,
+      "fail_reason": "BLOCKED: - Status: BLOCKED - Files changed: none. `src/minisheet/refs.py` and `tests/minisheet/test_refs.py` are untouched. - Tes"
+    }
+  ]
+}

@@ -24,6 +24,8 @@ import xml.etree.ElementTree as ET
 from datetime import datetime
 from pathlib import Path
 
+import mechanical
+
 ROOT = Path(__file__).resolve().parent.parent
 BENCH = ROOT / "bench"
 # Outside the repo, so an arm can't wander up into hidden_tests/ or reference/.
@@ -37,6 +39,7 @@ TASK_HIDDEN = BENCH / "hidden_tests" if TASK == "sitegen" else BENCH / "tasks" /
 # Optional starting repo: bench/tasks/<task>/start/ is copied into the run dir and committed before the arm starts.
 TASK_START = None if TASK == "sitegen" else BENCH / "tasks" / TASK / "start"
 PREFIX = "" if TASK == "sitegen" else f"{TASK}-"
+TASK_DIR = None if TASK == "sitegen" else BENCH / "tasks" / TASK
 MARKER = "BENCHMARK-COMPLETE"
 MAX_RESUMES = 6
 RESUME_PROMPT = (
@@ -47,6 +50,85 @@ SMOKE_PROMPT = (
     "List the names of the skills and agent types available to you that come from plugins "
     "(one per line, no commentary), then end with the line BENCHMARK-COMPLETE."
 )
+
+def load_task_cfg(task_dir: Path | None) -> dict:
+    """Language settings from <task>/task.yaml (flat `key: value` lines, lists as `[a, b]`);
+    without one a task is Python: .py files under src/, no Node."""
+    cfg = {"language": "python", "extensions": [".py"], "src_dirs": ["src"], "needs_node": False}
+    path = task_dir / "task.yaml" if task_dir else None
+    if path and path.is_file():
+        for line in path.read_text(encoding="utf-8").splitlines():
+            key, sep, val = line.split("#")[0].partition(":")
+            key, val = key.strip(), val.strip()
+            if not sep or key not in cfg:
+                continue
+            if isinstance(cfg[key], list):
+                cfg[key] = [v.strip() for v in val.strip("[]").split(",") if v.strip()]
+            elif isinstance(cfg[key], bool):
+                cfg[key] = val.lower() in ("true", "yes", "1")
+            else:
+                cfg[key] = val
+    return cfg
+
+
+TASK_CFG = load_task_cfg(TASK_DIR)
+
+
+def node_dir() -> Path:
+    """User-local Node (BENCH_NODE_DIR, else ~/tools/node), so npm works without touching the system PATH."""
+    return Path(os.environ.get("BENCH_NODE_DIR", Path.home() / "tools" / "node"))
+
+
+def with_node(env: dict[str, str], cfg: dict | None = None) -> dict[str, str]:
+    """env with the user-local Node first on PATH when the task needs it; else env unchanged."""
+    if not (cfg or TASK_CFG)["needs_node"] or not node_dir().is_dir():
+        return env
+    key = next((k for k in env if k.upper() == "PATH"), "PATH")
+    return {**env, key: str(node_dir()) + os.pathsep + env.get(key, "")}
+
+
+def bash_exe() -> str:
+    """A real bash: Git's on Windows (System32 bash.exe is WSL), else whatever is on PATH."""
+    if os.environ.get("BENCH_BASH"):
+        return os.environ["BENCH_BASH"]
+    git = shutil.which("git")
+    if git:
+        for sub in ("bin", "usr/bin"):
+            cand = Path(git).parent.parent / sub / "bash.exe"
+            if cand.is_file():
+                return str(cand)
+    return shutil.which("bash") or "bash"
+
+
+def junit_counts(junit: Path) -> tuple[int, list[str], dict]:
+    """(total, failed ids, {file: [passed, total]}) from a JUnit XML file."""
+    total, failed, by_file = 0, [], {}
+    for case in ET.parse(junit).getroot().iter("testcase"):
+        total += 1
+        # hidden_tests.test_api -> test_api; with suite subdirs (importlib mode) keep "suite.test_x".
+        parts = (case.get("classname") or "").split(".")
+        f = ".".join(parts[-2:]) if len(parts) >= 2 and parts[-2] not in ("hidden_tests",) else parts[-1]
+        bucket = by_file.setdefault(f, [0, 0])
+        bucket[1] += 1
+        if any(child.tag in ("failure", "error", "skipped") for child in case):
+            failed.append(f"{case.get('classname')}::{case.get('name')}")
+        else:
+            bucket[0] += 1
+    return total, failed, by_file
+
+
+def count_src_loc(run_dir: Path, cfg: dict | None = None) -> int:
+    """Lines in the task's source files: its extensions under its src_dirs (default .py under src/)."""
+    cfg = cfg or TASK_CFG
+    total = 0
+    for d in cfg["src_dirs"]:
+        root = run_dir / d
+        if root.exists():
+            total += sum(len(p.read_text(encoding="utf-8", errors="replace").splitlines())
+                         for p in root.rglob("*") if p.is_file() and p.suffix in cfg["extensions"]
+                         and "node_modules" not in p.parts)
+    return total
+
 
 def prompt_path(human: bool = False, task: str | None = None) -> Path:
     """The task's own prompt (bench/tasks/<task>/prompt.md, or prompt-human.md in human mode) when it
@@ -122,7 +204,7 @@ def arm_env() -> dict[str, str]:
     # Fork subagents are on by default in interactive sessions but off in -p; turn them on so
     # headless arms behave like the interactive sessions a user would actually run.
     env["CLAUDE_CODE_FORK_SUBAGENT"] = "1"
-    return env
+    return with_node(env)  # the agent's Bash tool inherits PATH from here
 
 
 def invoke(cmd: list[str], cwd: Path, log: Path, err: Path) -> None:
@@ -877,13 +959,30 @@ def dispatch_stats(events: list[dict], run_dir: Path | None = None) -> dict:
     }
 
 
+def _score_from_junit(junit: Path, key: str) -> dict:
+    if not junit.is_file() or junit.stat().st_size == 0:
+        return {f"{key}_passed": 0, f"{key}_total": None, f"{key}_failed_ids": ["(no junit)"]}
+    total, failed, by_file = junit_counts(junit)
+    return {f"{key}_passed": total - len(failed), f"{key}_total": total, f"{key}_failed_ids": failed,
+            f"{key}_by_file": {k: f"{p}/{t}" for k, (p, t) in sorted(by_file.items())}}
+
+
 def hidden_score(run_dir: Path, suite: Path | None = None, key: str = "hidden") -> dict:
     suite = suite or TASK_HIDDEN
     with tempfile.TemporaryDirectory() as tmp:
+        ignore = [".git", ".venv", "__pycache__"]
+        if (suite / "run.sh").is_file():
+            ignore += ["node_modules", "dist"]
         work = Path(tmp) / "w"
-        shutil.copytree(run_dir, work, ignore=shutil.ignore_patterns(".git", ".venv", "__pycache__"))
+        shutil.copytree(run_dir, work, ignore=shutil.ignore_patterns(*ignore))
         shutil.copytree(suite, work / "hidden_tests")
         junit = Path(tmp) / "junit.xml"
+        if (suite / "run.sh").is_file():
+            # The suite brings its own runner, so any language scores the same way: `bash hidden_tests/run.sh`
+            # in the temp copy, writing JUnit XML to $JUNIT; $HIDDEN_DIR names the suite directory.
+            env = with_node(dict(os.environ, JUNIT=str(junit), HIDDEN_DIR="hidden_tests"))
+            subprocess.run([bash_exe(), "hidden_tests/run.sh"], cwd=work, env=env, capture_output=True, timeout=900)
+            return _score_from_junit(junit, key)
         env = dict(os.environ, PYTHONPATH=os.pathsep.join([str(work / "src"), str(work)]))
         # A task may list extra test-only packages (e.g. playwright) in hidden/requirements.txt.
         req = TASK_HIDDEN / "requirements.txt"  # the task's extras serve every suite
@@ -894,25 +993,20 @@ def hidden_score(run_dir: Path, suite: Path | None = None, key: str = "hidden") 
              "hidden_tests", "-q", "-p", "no:cacheprovider", f"--junitxml={junit}"],
             cwd=work, env=env, capture_output=True, timeout=900,
         )
-        if not junit.exists():
-            return {f"{key}_passed": 0, f"{key}_total": None, f"{key}_failed_ids": ["(no junit)"]}
-        total, failed, by_file = 0, [], {}
-        for case in ET.parse(junit).getroot().iter("testcase"):
-            total += 1
-            # hidden_tests.test_api -> test_api; with suite subdirs (importlib mode) keep "suite.test_x".
-            parts = (case.get("classname") or "").split(".")
-            f = ".".join(parts[-2:]) if len(parts) >= 2 and parts[-2] not in ("hidden_tests",) else parts[-1]
-            bucket = by_file.setdefault(f, [0, 0])
-            bucket[1] += 1
-            if any(child.tag in ("failure", "error", "skipped") for child in case):
-                failed.append(f"{case.get('classname')}::{case.get('name')}")
-            else:
-                bucket[0] += 1
-        return {f"{key}_passed": total - len(failed), f"{key}_total": total, f"{key}_failed_ids": failed,
-                f"{key}_by_file": {k: f"{p}/{t}" for k, (p, t) in sorted(by_file.items())}}
+        return _score_from_junit(junit, key)
 
 
 def own_tests(run_dir: Path) -> dict:
+    script = TASK_HIDDEN / "own_tests.sh"
+    if script.is_file():  # task-supplied runner (cwd = the run dir), JUnit XML via $JUNIT
+        with tempfile.TemporaryDirectory() as tmp:
+            junit = Path(tmp) / "junit.xml"
+            env = with_node(dict(os.environ, JUNIT=str(junit)))
+            subprocess.run([bash_exe(), str(script)], cwd=run_dir, env=env, capture_output=True, timeout=600)
+            if not junit.is_file() or junit.stat().st_size == 0:
+                return {"own_tests_summary": "(no junit)"}
+            total, failed, _ = junit_counts(junit)
+            return {"own_tests_summary": f"{total - len(failed)} passed, {len(failed)} failed"}
     proc = subprocess.run(
         ["uv", "run", "--no-project", "--with", "pytest", "python", "-m", "pytest", "-q", "-p", "no:cacheprovider",
          "--ignore=hidden_tests"],
@@ -930,22 +1024,31 @@ def _load_plan_tools():
     return plan_tools
 
 
-def task_records(run_dir: Path, dispatches: list[dict]) -> list[dict]:
-    """Per-task observations for `predict.py --refit`: each implementer dispatch (task id from its
-    description, e.g. "T4 sitegen search/links") joined to that task's plan features. Re-dispatches
-    of one task sum their durations. Tasks with no plan match are skipped."""
+def _run_plan(run_dir: Path):
+    """The run's plan (the newest plan with a `%% taskgraph` block, else the newest plan) or None."""
     plans = sorted((run_dir / "docs" / "plans").glob("*.md"), key=lambda p: (p.stat().st_mtime, p.name))
     texts = {p: p.read_text(encoding="utf-8-sig", errors="replace") for p in plans}
     with_graph = [p for p in plans if re.search(r"^\s*%%\s*taskgraph\b", texts[p], re.M)]
     chosen = (with_graph or plans)[-1:]
     if not chosen:
+        return None
+    return _load_plan_tools().Plan(texts[chosen[0]], chosen[0])
+
+
+def task_records(run_dir: Path, dispatches: list[dict], events: list[dict] | None = None) -> list[dict]:
+    """Per-task observations for `predict.py --refit`: each implementer dispatch (task id from its
+    description, e.g. "T4 sitegen search/links" or "Implementer G (T8)") joined to that task's plan
+    features. Re-dispatches of one task sum their durations. Tasks with no plan match are skipped.
+    With the stream `events`, each record also carries the mechanical-task measurements
+    (bench/mechanical.py: tokens, cost, tool calls, first_time_pass, rework, critical path, ...)."""
+    plan = _run_plan(run_dir)
+    if plan is None:
         return []
     pt = _load_plan_tools()
-    plan = pt.Plan(texts[chosen[0]], chosen[0])
     secs: dict[str, float] = {}
     models: dict[str, str] = {}
     for d in dispatches:
-        m = re.match(r"\s*(T\d+)\b", d.get("description") or "")
+        m = re.search(r"\b(T\d+)\b", d.get("description") or "")
         if (not m or "implementer" not in (d.get("subagent_type") or "")
                 or d.get("start_s") is None or d.get("end_s") is None):
             continue
@@ -962,17 +1065,50 @@ def task_records(run_dir: Path, dispatches: list[dict]) -> list[dict]:
                     "tests": feats.get("tests", "fast"), "kind": feats.get("kind", "design"), "model": feats.get("model") or models.get(tid),
                     "actual_s": round(s, 1)})
     out.sort(key=lambda r: pt.nkey(r["task"]))
+    if events is not None:
+        try:
+            graph = pt.parse_taskgraph(plan)
+        except pt.PlanError:
+            graph = {}
+        out = mechanical.task_metrics(events, out, plan, graph, run_dir, PRICES)
     return out
 
 
+def load_speeds(path: Path = MODELS_JSON) -> dict[str, float]:
+    return {k: float(m["output_tps"]) for k, m in json.loads(Path(path).read_text(encoding="utf-8")).get("models", {}).items()
+            if m.get("output_tps")}
+
+
+def mechanical_score(run_dir: Path, events: list[dict], dispatches: list[dict]) -> tuple[list[dict], dict]:
+    """(`tasks` records, `mechanical` block) for one run, from its stream, plan and .superlite/ notes."""
+    tasks = task_records(run_dir, dispatches, events)
+    plan = _run_plan(run_dir)
+    try:
+        graph = _load_plan_tools().parse_taskgraph(plan) if plan is not None else {}
+    except Exception:
+        graph = {}
+    tids = set(plan.by_id) if plan is not None else set()
+    block = mechanical.mechanical_block(tasks, graph, PRICES, load_speeds(), plan,
+                                        mechanical.other_haiku(events, PRICES, tids))
+    return tasks, block
+
+
 def cmd_rescore_tasks(arm: str, rep: str) -> None:
-    """Add/refresh the `tasks` key of an existing score JSON without rerunning the hidden suites."""
+    """Add/refresh the `tasks` and `mechanical` keys of an existing score JSON without rerunning the
+    hidden suites. A run that was killed before scoring has no score JSON: its metrics go to
+    `<name>.mechanical.json` instead (same two keys)."""
     name = f"{PREFIX}{arm}-{rep}"
     path = RESULTS / f"{name}.json"
-    score = json.loads(path.read_text(encoding="utf-8"))
-    score["tasks"] = task_records(RUNS / name, score.get("dispatches") or [])
+    events = read_events(RESULTS / f"{name}.jsonl")
+    if path.is_file():
+        score = json.loads(path.read_text(encoding="utf-8"))
+        dispatches = score.get("dispatches") or []
+    else:
+        score, path = {"run": name}, RESULTS / f"{name}.mechanical.json"
+        dispatches = dispatch_stats(events, RUNS / name)["dispatches"]
+    score["tasks"], score["mechanical"] = mechanical_score(RUNS / name, events, dispatches)
     path.write_text(json.dumps(score, indent=2), encoding="utf-8")
-    print(f"{name}: {len(score['tasks'])} task records")
+    print(f"{path.name}: {len(score['tasks'])} task records")
 
 
 def cmd_score(arm: str, rep: str) -> dict:
@@ -1000,8 +1136,7 @@ def cmd_score(arm: str, rep: str) -> dict:
             for k, v in u.items():
                 if isinstance(v, (int, float)):
                     agg[k] = agg.get(k, 0) + v
-    src_loc = sum(len(p.read_text(encoding="utf-8", errors="replace").splitlines())
-                  for p in (run_dir / "src").rglob("*.py")) if (run_dir / "src").exists() else 0
+    src_loc = count_src_loc(run_dir)
     commits = subprocess.run(["git", "rev-list", "--count", "HEAD"], cwd=run_dir,
                              capture_output=True, text=True).stdout.strip()
     score = {
@@ -1026,7 +1161,7 @@ def cmd_score(arm: str, rep: str) -> dict:
         **(hidden_score(run_dir, TASK_HIDDEN.parent / "robustness", "robust")
            if (TASK_HIDDEN.parent / "robustness").is_dir() else {}),
     }
-    score["tasks"] = task_records(run_dir, score.get("dispatches") or [])
+    score["tasks"], score["mechanical"] = mechanical_score(run_dir, events, score.get("dispatches") or [])
     (RESULTS / f"{name}.json").write_text(json.dumps(score, indent=2), encoding="utf-8")
     brief = {k: v for k, v in score.items() if k not in ("model_usage", "hidden_failed_ids", "dispatches", "assignments")}
     print(json.dumps(brief, indent=2))

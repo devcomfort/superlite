@@ -1,0 +1,245 @@
+{
+  "config": {
+    "run_dir": "C:\\Users\\CWogu\\source\\repos\\superlite-bench-runs\\combo-superlite-x1",
+    "commit": "533bf3c8e0e6b4db407d708fc28665b53dcee2e8",
+    "tasks": [
+      "T8"
+    ],
+    "selected_because": "marked `Kind: mechanical` in the plan",
+    "n": 3,
+    "cost_cap_usd": 1.5,
+    "timeout_s": 300,
+    "verify": "uv run --no-project --with pytest python -m pytest {tests} -q -p no:cacheprovider",
+    "hidden": "C:\\Users\\CWogu\\source\\repos\\superlite\\bench\\tasks\\combo\\hidden",
+    "setup": "",
+    "per_run_cap_usd": {
+      "haiku": 0.1,
+      "sonnet": 0.4
+    },
+    "out": "C:\\Users\\CWogu\\source\\repos\\superlite\\bench\\results\\mechanical-ab-combo-superlite-x1-20261018-132142"
+  },
+  "wall_s": 94.2,
+  "total_cost_usd": 0.3875,
+  "table": [
+    {
+      "task": "T8",
+      "model": "haiku",
+      "runs": 3,
+      "passed": 3,
+      "pass_rate": 1.0,
+      "median_s": 84.5,
+      "median_cost_usd": 0.01,
+      "median_tool_calls": 13,
+      "median_out_tokens": 9797,
+      "median_ctx_tokens": 253358,
+      "failures": []
+    },
+    {
+      "task": "T8",
+      "model": "sonnet",
+      "runs": 3,
+      "passed": 3,
+      "pass_rate": 1.0,
+      "median_s": 72.0,
+      "median_cost_usd": 0.11,
+      "median_tool_calls": 7,
+      "median_out_tokens": 3408,
+      "median_ctx_tokens": 109839,
+      "failures": []
+    }
+  ],
+  "runs": [
+    {
+      "task": "T8",
+      "model": "haiku",
+      "rep": 1,
+      "budget_usd": 0.1,
+      "pid": 48356,
+      "timed_out": false,
+      "duration_s": 80.1,
+      "tokens": {
+        "in": 24,
+        "out": 7883,
+        "cache_read": 248719,
+        "cache_write": 25014
+      },
+      "cost_usd": 0.0114,
+      "tool_calls": 13,
+      "turns": 14,
+      "subtype": "success",
+      "status": null,
+      "reply": "DONE **Files changed** - `src/minisheet/refs.py` (replaced the three `NotImplementedError` stubs with `parse_ref`, `parse_range`, `to_a1` plus a regex and bounds constants; `Ref` and `__all__` unchanged) - `tests/minisheet/test_refs.py` (ne",
+      "models": [
+        "claude-haiku-5-5"
+      ],
+      "own_ok": true,
+      "own_tail": "23 passed in 0.04s",
+      "hidden_total": 6,
+      "hidden_passed": 6,
+      "hidden_failed": [],
+      "out_of_scope": [],
+      "passed": true,
+      "fail_reason": null
+    },
+    {
+      "task": "T8",
+      "model": "haiku",
+      "rep": 2,
+      "budget_usd": 0.1,
+      "pid": 54788,
+      "timed_out": false,
+      "duration_s": 84.5,
+      "tokens": {
+        "in": 22,
+        "out": 9797,
+        "cache_read": 158808,
+        "cache_write": 18282
+      },
+      "cost_usd": 0.0101,
+      "tool_calls": 13,
+      "turns": 14,
+      "subtype": "success",
+      "status": "DONE",
+      "reply": "Status: DONE Files changed: - src/minisheet/refs.py (stubs replaced with `parse_ref`, `parse_range`, `to_a1`; `Ref` dataclass and `__all__` unchanged; added `import re`) - tests/minisheet/test_refs.py (new) Test command: `bash \"$SUPERLITE/s",
+      "models": [
+        "claude-haiku-5-5"
+      ],
+      "own_ok": true,
+      "own_tail": "35 passed in 0.04s",
+      "hidden_total": 6,
+      "hidden_passed": 6,
+      "hidden_failed": [],
+      "out_of_scope": [],
+      "passed": true,
+      "fail_reason": null
+    },
+    {
+      "task": "T8",
+      "model": "haiku",
+      "rep": 3,
+      "budget_usd": 0.1,
+      "pid": 20172,
+      "timed_out": false,
+      "duration_s": 87.5,
+      "tokens": {
+        "in": 22,
+        "out": 10423,
+        "cache_read": 228113,
+        "cache_write": 25223
+      },
+      "cost_usd": 0.0125,
+      "tool_calls": 11,
+      "turns": 12,
+      "subtype": "success",
+      "status": "DONE",
+      "reply": "Status: DONE Files changed: - src/minisheet/refs.py - tests/minisheet/test_refs.py Test command: `bash \"$SL\" run_tests --fast tests/minisheet/test_refs.py --background`, then `bash \"$SL\" run_tests --wait`. Result: `\"passed\": 26, \"failed\": 0",
+      "models": [
+        "claude-haiku-5-5"
+      ],
+      "own_ok": true,
+      "own_tail": "26 passed in 0.07s",
+      "hidden_total": 6,
+      "hidden_passed": 6,
+      "hidden_failed": [],
+      "out_of_scope": [],
+      "passed": true,
+      "fail_reason": null
+    },
+    {
+      "task": "T8",
+      "model": "sonnet",
+      "rep": 1,
+      "budget_usd": 0.4,
+      "pid": 11532,
+      "timed_out": false,
+      "duration_s": 72.0,
+      "tokens": {
+        "in": 12,
+        "out": 3408,
+        "cache_read": 91982,
+        "cache_write": 17845
+      },
+      "cost_usd": 0.1147,
+      "tool_calls": 7,
+      "turns": 8,
+      "subtype": "success",
+      "status": "DONE",
+      "reply": "Status: DONE Files changed: - src/minisheet/refs.py - tests/minisheet/test_refs.py Test command: `uv run pytest tests/minisheet/test_refs.py -q` Result: 27 passed. I ran pytest directly, not through `sl run_tests`. The tests cover all B\u00a71 t",
+      "models": [
+        "claude-sonnet-5-5"
+      ],
+      "own_ok": true,
+      "own_tail": "27 passed in 0.05s",
+      "hidden_total": 6,
+      "hidden_passed": 6,
+      "hidden_failed": [],
+      "out_of_scope": [],
+      "passed": true,
+      "fail_reason": null
+    },
+    {
+      "task": "T8",
+      "model": "sonnet",
+      "rep": 2,
+      "budget_usd": 0.4,
+      "pid": 1984,
+      "timed_out": false,
+      "duration_s": 71.7,
+      "tokens": {
+        "in": 12,
+        "out": 3327,
+        "cache_read": 91404,
+        "cache_write": 17579
+      },
+      "cost_usd": 0.1128,
+      "tool_calls": 7,
+      "turns": 8,
+      "subtype": "success",
+      "status": "DONE",
+      "reply": "Status: DONE Files changed: - src/minisheet/refs.py - tests/minisheet/test_refs.py Test command: `uv run pytest tests/minisheet/test_refs.py -q` Result: 19 passed. I ran pytest directly, not through `sl run_tests`. Tests cover every B\u00a71 tab",
+      "models": [
+        "claude-sonnet-5-5"
+      ],
+      "own_ok": true,
+      "own_tail": "19 passed in 0.04s",
+      "hidden_total": 6,
+      "hidden_passed": 6,
+      "hidden_failed": [],
+      "out_of_scope": [],
+      "passed": true,
+      "fail_reason": null
+    },
+    {
+      "task": "T8",
+      "model": "sonnet",
+      "rep": 3,
+      "budget_usd": 0.4,
+      "pid": 45092,
+      "timed_out": false,
+      "duration_s": 73.4,
+      "tokens": {
+        "in": 14,
+        "out": 3922,
+        "cache_read": 115918,
+        "cache_write": 18801
+      },
+      "cost_usd": 0.126,
+      "tool_calls": 11,
+      "turns": 12,
+      "subtype": "success",
+      "status": "DONE",
+      "reply": "Status: DONE Files changed: - src/minisheet/refs.py - tests/minisheet/test_refs.py Test command: `uv run pytest tests/minisheet/test_refs.py -q` Result: 8 passed. I ran pytest directly, not through the `sl run_tests` script. Tests cover eve",
+      "models": [
+        "claude-sonnet-5-5"
+      ],
+      "own_ok": true,
+      "own_tail": "8 passed in 0.04s",
+      "hidden_total": 6,
+      "hidden_passed": 6,
+      "hidden_failed": [],
+      "out_of_scope": [],
+      "passed": true,
+      "fail_reason": null
+    }
+  ]
+}
