@@ -12,7 +12,7 @@ Profiling superpowers 6.4.1 showed where the time and money go:
 - The full test suite re-run by several skills.
 - About 3KB injected at session start.
 
-Superlite uses one approval gate, plans that carry contracts instead of code, parallel waves, one review per wave, one test run per wave, and short reports. The session hook injects about 1KB.
+Superlite uses one approval gate, plans that carry contracts instead of code, a task graph that runs ready work in parallel, selective or batched review plus one fresh Opus final review, scripts instead of agents for mechanical steps, and short reports. The session hook injects about 1KB.
 
 ## Skills
 
@@ -25,20 +25,44 @@ Superlite uses one approval gate, plans that carry contracts instead of code, pa
 - `verification-before-completion`
 - `finishing-a-development-branch`
 
-Agents: `implementer` (sonnet), `reviewer` (sonnet), `test-runner` (haiku).
+Agents (`agents/`):
+
+- `implementer` (sonnet, medium): builds one task, then stays idle for reuse.
+- `package-reviewer` (sonnet, medium): reviews one committed task or one package, then fixes its own findings with regression tests.
+- `final-reviewer` (opus, high): a fresh one-turn reviewer that reads only the review packet, with no tools.
+
+### Tools
+
+Mechanical steps are scripts, not agents. Every tool runs as `bash <skill-dir>/scripts/sl <tool> ...`, where `<skill-dir>` is `skills/subagent-driven-development`. The `sl` launcher runs a `.sh` tool under bash and a `.py` tool under the first working Python, and exits 3 when there is none.
+
+| Tool | What it does |
+|---|---|
+| `plan_tools` | Lints the plan, checks its task graph and sizes |
+| `predict` | Predicts each task's context and time |
+| `build_prime` | Builds the shared prime that every agent reads first |
+| `next_tasks` | Computes which tasks are ready |
+| `assign` | Scores idle agents and picks the most relevant one |
+| `commit_task` | Checks scope and commits a task's owned files |
+| `run_tests` | Runs the tests (replaces the old test-runner agent) |
+| `pt_review` | Decides which tasks get their own review and which are batched per package |
+| `incident` | Records and queries the shared incident log (file, line, context) |
+| `graphify_gate` | Gates Graphify for search in non-trivial codebases |
+| `finish` | Collects the finish summary and builds the review packet |
+
+Robustness probes run through `probes/probe_run.py` with the probe pack in `probes/pack/`. Model tiers and the predictor coefficients live in `config/models.json` and `config/predictor.json`.
 
 ## Configuration
 
 - **`detail` (plan switch).** `writing-plans` records `**Detail:** contracts | tests | full` in the plan header, and a task can override it. `contracts` gives files, signatures and named tests with exact values. `tests` (the default) adds the test code verbatim and leaves the implementation to the implementer. `full` includes implementation code too, for tricky algorithms. `brainstorming` asks for it in its single batched question, and picks the default itself when unattended.
-- **Fork subagents.** The Opus final review runs as a fork of the coordinator, so it reads the coordinator's warm cache. Forks are on by default in interactive sessions. For `claude -p`, set `CLAUDE_CODE_FORK_SUBAGENT=1`.
+- **Final review.** The coordinator runs at medium effort. The final review is a fresh Opus `final-reviewer` at high effort: one turn, no tools, reading a review packet built from the logs, with a target under 30 s. It is not a fork, so `CLAUDE_CODE_FORK_SUBAGENT` is not needed.
 - **Implementer cache TTL.** The implementer's frontmatter sets a 1-hour prompt cache TTL, so its history is still cached when fix rounds arrive waves later. Setting `CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL=1h` in the environment does the same.
-- **Context-budgeted sizing.** Each task in a plan carries an `Est. context` line, predicted from the lines it writes, the lines it reads and the docs it is handed, on top of the implementer's fixed ~18k prefix. Tasks predicted above 80k are split, tasks whose variable part is smaller than the prefix are merged with a same-wave neighbor, waves hold at most 5 tasks, and the whole plan stays under 25k chars because it doubles as the shared prime. The coefficients are fit on one project, so treat them as a guide.
+- **Context-budgeted sizing.** Each task in a plan carries an `Est. context` line, predicted from the lines it writes, the lines it reads and the docs it is handed, on top of the implementer's fixed ~18k prefix. Tasks predicted above 80k are split, tasks whose variable part is smaller than the prefix are merged with a neighbor, no task is predicted to run longer than about 3 minutes, there is no fixed wave size (the task graph sets the parallel width), and the whole plan stays under 15k chars because it doubles as the shared prime. The coefficients are fit on one project, so treat them as a guide.
 
 ## Installation
 
 Installation differs by harness. If you use more than one, install superlite separately for each one. Every integration loads `using-superlite` at session start; to verify, open a fresh session and send `Let's make a react todo list`. A working install triggers `brainstorming` before any code is written.
 
-Each harness has a tool-mapping file in `skills/using-superlite/references/` (Antigravity, Codex, Gemini, Hermes, Muse, Pi, plus Claude Code notes). Where a harness has no plugin agents, `implementer`, `reviewer` and `test-runner` run as that harness's generic subagent with `agents/<name>.md` as its instructions.
+Each harness has a tool-mapping file in `skills/using-superlite/references/` (Antigravity, Codex, Gemini, Hermes, Muse, Pi, plus Claude Code notes). Where a harness has no plugin agents, `implementer`, `package-reviewer` and `final-reviewer` run as that harness's generic subagent with `agents/<name>.md` as its instructions.
 
 ### Claude Code
 
@@ -307,14 +331,13 @@ Full write-up: [bench/report.md](bench/report.md). (An earlier version of these 
 
 ## Tasks
 
-- [ ] **Superlite 0.2: cache sharing, Opus review and code-in-plan as measured options, 3 reps.** The design is in `C:\Work\Planning\Specs\2026-10-17-superlite-architecture-design.md`. Steps:
-  - Shared, byte-identical brief prefixes, with warm-then-fan-out dispatch and the 1-hour subagent cache TTL.
-  - The Opus final review back as the default.
-  - A `code-in-plan` switch.
-  - A harder benchmark task where review quality shows.
-  - 3 reps per arm, run sequentially.
+- [ ] **Superlite 0.3: a task-graph flow that aims at half of superpowers' time.** The design is in `C:\Work\Planning\Specs\2026-10-17-superlite-architecture-design.md` (D10-D18, G1, R1). Steps:
+  - Smoke-test the 0.3 tools and agents.
+  - Combined task (`bench/tasks/combo`), 3 reps, arms in parallel.
+  - E12: planted defects (`bench/tasks/combo-planted`), 3 reps with and without the incident log.
+  - E13: brownfield (`bench/tasks/brownfield`), 3 reps with and without Graphify.
 
-  Done when the measured speed holds (at least 2.5× faster than superpowers), cost stays at or below superpowers', and each option's effect is measured.
+  Done when the superlite median is at most 0.5x superpowers' on the combined task (G1) at equal hidden-test score and robustness of at least 6/7, and the E12 and E13 effects are measured.
 
 ## Note
 

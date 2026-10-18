@@ -15,7 +15,7 @@ Pi's built-in coding tools are lowercase: `read`, `write`, `edit`, `bash`, plus 
 
 ## Running superlite's agents
 
-Pi core does not ship a standard subagent tool and has no plugin agents, so `superlite:implementer`, `superlite:reviewer` and `superlite:test-runner` do not exist. The `pi-subagents` package is a strong optional companion: it provides a `subagent` tool with single-agent, chain, parallel, async, forked-context and resume/status workflows. With it, pass the full text of `agents/<name>.md` (from this plugin's root, minus the frontmatter) followed by the brief as the prompt, on the tier named in that file (implementer and reviewer: sonnet-class, medium; final review high; test-runner: haiku-class, low). Run a wave's independent agents in parallel.
+Pi core does not ship a standard subagent tool and has no plugin agents, so `superlite:implementer`, `superlite:package-reviewer` and `superlite:final-reviewer` do not exist. The `pi-subagents` package is a strong optional companion: it provides a `subagent` tool with single-agent, chain, parallel, async, forked-context and resume/status workflows. With it, pass the full text of `agents/<name>.md` (from this plugin's root, minus the frontmatter) followed by the brief as the prompt, on the tier named in that file (implementer and package-reviewer: sonnet-class, medium; final-reviewer: opus-class, high). Run a wave's independent agents in parallel.
 
 If no subagent tool is installed, do not fabricate `Agent` calls: use the skills' inline mode (implement directly, run the suite yourself) or explain that the optional subagent capability is missing.
 

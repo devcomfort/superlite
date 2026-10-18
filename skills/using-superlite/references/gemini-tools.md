@@ -31,15 +31,15 @@ User-level skills live at **`~/.gemini/skills/`**, with **`~/.agents/skills/`** 
 
 ## Running superlite's agents
 
-Gemini CLI has no plugin agents, so `superlite:implementer`, `superlite:reviewer` and `superlite:test-runner` do not exist. Dispatch Gemini's built-in `generalist` (also reachable as `@generalist <prompt>`):
+Gemini CLI has no plugin agents, so `superlite:implementer`, `superlite:package-reviewer` and `superlite:final-reviewer` do not exist. Dispatch Gemini's built-in `generalist` (also reachable as `@generalist <prompt>`):
 
 | Skill dispatch form | Gemini CLI equivalent |
 |---|---|
-| `superlite:implementer` / `reviewer` / `test-runner` | `invoke_agent` with `agent_name: "generalist"`; the prompt is the full text of `agents/<name>.md` (from this plugin's root, minus the frontmatter) followed by the brief |
+| `superlite:implementer` / `package-reviewer` / `final-reviewer` | `invoke_agent` with `agent_name: "generalist"`; the prompt is the full text of `agents/<name>.md` (from this plugin's root, minus the frontmatter) followed by the brief |
 | `Explore` | `invoke_agent` with `agent_name: "codebase_investigator"` |
 | `general-purpose` | `invoke_agent` with `agent_name: "generalist"` |
 
-Tier from the `model` and `effort` named in `agents/<name>.md` (implementer and reviewer: sonnet-class, medium; final review high; test-runner: haiku-class, low). If Gemini lets you pick a model for the subagent, use the matching tier; otherwise it inherits the session model. The reviewer and test-runner are read-only: say so in the prompt.
+Tier from the `model` and `effort` named in `agents/<name>.md` (implementer and package-reviewer: sonnet-class, medium; final-reviewer: opus-class, high). If Gemini lets you pick a model for the subagent, use the matching tier; otherwise it inherits the session model. The final-reviewer reads only its review packet and uses no tools: say so in the prompt. Run tests with `bash <skill-dir>/scripts/sl run_tests`.
 
 ### Parallel dispatch
 

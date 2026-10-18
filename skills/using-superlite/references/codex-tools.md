@@ -25,20 +25,20 @@ Which tools you get depends on the multi-agent version your model preset selects
 
 ## Running superlite's agents
 
-Codex has no plugin agents, so `superlite:implementer`, `superlite:reviewer` and `superlite:test-runner` do not exist. Call `spawn_agent` and put the full text of `agents/<name>.md` (from this plugin's root, minus the frontmatter) followed by the brief into its message. Set the tier from that file's frontmatter, mapped to models on your spawn allowlist:
+Codex has no plugin agents, so `superlite:implementer`, `superlite:package-reviewer` and `superlite:final-reviewer` do not exist. Call `spawn_agent` and put the full text of `agents/<name>.md` (from this plugin's root, minus the frontmatter) followed by the brief into its message. Set the tier from that file's frontmatter, mapped to models on your spawn allowlist:
 
 | Agent | Tier named in agents/<name>.md | `reasoning_effort` |
 |---|---|---|
 | implementer | sonnet-class (mid-tier) | medium |
-| reviewer | sonnet-class (mid-tier) | medium (high for the final review) |
-| test-runner | haiku-class (smallest) | low |
+| package-reviewer | sonnet-class (mid-tier) | medium |
+| final-reviewer | opus-class (top tier) | high |
 
-Reviewer and test-runner are read-only; say so in the prompt. Role files under `~/.codex/agents/` (Codex 0.145+) attach via `agent_type`; use that only if you have set up roles from these files.
+The final-reviewer reads only its review packet and uses no tools; say so in the prompt. Run tests with `bash <skill-dir>/scripts/sl run_tests`. Role files under `~/.codex/agents/` (Codex 0.145+) attach via `agent_type`; use that only if you have set up roles from these files.
 
 - **Spawning:** give children a clean context with `spawn_agent {fork_turns: "none"}`; the default `"all"` copies your whole transcript into the child.
 - **Model and effort:** set `model` AND `reasoning_effort` on every `spawn_agent`. Setting `model` alone leaves the child's effort at that model's default. Never copy a model name from a skill or old session without checking it against your current spawn allowlist; V2 hard-errors on unsupported presets.
 - **Fix rounds:** resume the implementer with `followup_task` instead of dispatching a fresh one.
-- **Lifecycle:** V2 has no `close_agent`; finished children are evicted when slots are needed. On V1, close reviewers when their review returns and implementers after their wave's review passes.
+- **Lifecycle:** V2 has no `close_agent`; finished children are evicted when slots are needed. On V1, close reviewers when their review returns and implementers when their package's review passes.
 
 ## Waiting on children
 

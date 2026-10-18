@@ -13,16 +13,16 @@ Skills speak in Claude Code's tool names. On the Antigravity CLI (`agy`) they re
 
 ## Running superlite's agents
 
-Antigravity has no plugin agents, so `superlite:implementer`, `superlite:reviewer` and `superlite:test-runner` do not exist. Call `invoke_subagent` and put the full text of `agents/<name>.md` (from this plugin's root, minus the frontmatter) followed by the brief into the prompt. Tier from the `model` and `effort` in that file's frontmatter:
+Antigravity has no plugin agents, so `superlite:implementer`, `superlite:package-reviewer` and `superlite:final-reviewer` do not exist. Call `invoke_subagent` and put the full text of `agents/<name>.md` (from this plugin's root, minus the frontmatter) followed by the brief into the prompt. Tier from the `model` and `effort` in that file's frontmatter:
 
 | Agent | TypeName | Tier named in agents/<name>.md |
 |---|---|---|
 | implementer | `self` | sonnet, medium |
-| reviewer | `research` (read-only); use `self` if it cannot run read-only `git` | sonnet, medium (high for the final review) |
-| test-runner | `self` | haiku, low |
+| package-reviewer | `self` (it fixes its own findings) | sonnet, medium |
+| final-reviewer | `research` (read-only, no tools needed) | opus, high |
 | Explore | `research` | haiku or sonnet |
 
-If you cannot choose a model per call, keep the tier in mind and do not let the test-runner or reviewer write files. For several independent agents in a wave, issue the `invoke_subagent` calls in one response.
+If you cannot choose a model per call, keep the tier in mind and do not let the final-reviewer write files. Run tests with `bash <skill-dir>/scripts/sl run_tests`, not an agent. For several independent agents in a wave, issue the `invoke_subagent` calls in one response.
 
 ## Task tracking
 
