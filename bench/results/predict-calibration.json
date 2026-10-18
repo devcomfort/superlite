@@ -1,0 +1,201 @@
+{
+ "task_models": {
+  "predictor": {
+   "mae_s": 90.7,
+   "bias_s": -21.1,
+   "n": 43
+  },
+  "scaled": {
+   "mae_s": 104.9,
+   "bias_s": -51.4,
+   "n": 43
+  },
+  "ols": {
+   "mae_s": 102.9,
+   "bias_s": 13.8,
+   "n": 43
+  }
+ },
+ "runs": {
+  "combo-superlite-v2": {
+   "complete": true,
+   "pre_build_s": 161.2,
+   "plan_write_s": 100.8,
+   "build_span_s": 631.1,
+   "post_build_s": 589.6,
+   "total_s": 1381.9,
+   "peak_agents": 5,
+   "reviews": 5,
+   "fixes": 0,
+   "pred_build_s": 888.0,
+   "pred_total_s": 1098.0,
+   "plan_tasks": 11,
+   "dispatched_tasks": 11
+  },
+  "combo-superlite-v3": {
+   "complete": true,
+   "pre_build_s": 285.4,
+   "plan_write_s": 92.9,
+   "build_span_s": 480.7,
+   "post_build_s": 1054.7,
+   "total_s": 1820.8,
+   "peak_agents": 6,
+   "reviews": 3,
+   "fixes": 0,
+   "pred_build_s": 708.0,
+   "pred_total_s": 918.0,
+   "plan_tasks": 11,
+   "dispatched_tasks": 8
+  },
+  "combo-superlite-w1": {
+   "complete": true,
+   "pre_build_s": 357.3,
+   "plan_write_s": 114.5,
+   "build_span_s": 562.2,
+   "post_build_s": 842.3,
+   "total_s": 1761.8,
+   "peak_agents": 5,
+   "reviews": 7,
+   "fixes": 1,
+   "pred_build_s": 786.0,
+   "pred_total_s": 996.0000000000001,
+   "plan_tasks": 6,
+   "dispatched_tasks": 4
+  },
+  "combo-superlite-w2": {
+   "complete": true,
+   "pre_build_s": 298.5,
+   "plan_write_s": 108.5,
+   "build_span_s": 953.2,
+   "post_build_s": 505.9,
+   "total_s": 1757.6,
+   "peak_agents": 4,
+   "reviews": 4,
+   "fixes": 1,
+   "pred_build_s": 798.0,
+   "pred_total_s": 1008.0,
+   "plan_tasks": 8,
+   "dispatched_tasks": 6
+  },
+  "combo-superlite-w3": {
+   "complete": true,
+   "pre_build_s": 350.3,
+   "plan_write_s": 101.0,
+   "build_span_s": 445.6,
+   "post_build_s": 689.7,
+   "total_s": 1485.6,
+   "peak_agents": 5,
+   "reviews": 5,
+   "fixes": 3,
+   "pred_build_s": 528.0,
+   "pred_total_s": 738.0,
+   "plan_tasks": 9,
+   "dispatched_tasks": 6
+  },
+  "combo-superlite-x1": {
+   "complete": false,
+   "pre_build_s": 253.1,
+   "plan_write_s": 124.8,
+   "build_span_s": 72.5,
+   "post_build_s": 0.5,
+   "total_s": 326.1,
+   "peak_agents": 8,
+   "reviews": 0,
+   "fixes": 0,
+   "pred_build_s": 690.0,
+   "pred_total_s": 900.0,
+   "plan_tasks": 16,
+   "dispatched_tasks": 8
+  }
+ },
+ "per_run": [
+  {
+   "run": "combo-superlite-v2",
+   "actual_build_s": 631.1,
+   "predictor_build_s": 888,
+   "k": 0.78,
+   "calibrated_build_s": 692,
+   "actual_total_s": 1381.9,
+   "predictor_total_s": 1098,
+   "calibrated_total_s": 1783,
+   "pre_s": 161.2,
+   "post_s": 589.6,
+   "pre_pred_s": 324,
+   "post_pred_s": 766
+  },
+  {
+   "run": "combo-superlite-v3",
+   "actual_build_s": 480.7,
+   "predictor_build_s": 708,
+   "k": 0.78,
+   "calibrated_build_s": 552,
+   "actual_total_s": 1820.8,
+   "predictor_total_s": 918,
+   "calibrated_total_s": 1516,
+   "pre_s": 285.4,
+   "post_s": 1054.7,
+   "pre_pred_s": 324,
+   "post_pred_s": 640
+  },
+  {
+   "run": "combo-superlite-w1",
+   "actual_build_s": 562.2,
+   "predictor_build_s": 786,
+   "k": 0.78,
+   "calibrated_build_s": 611,
+   "actual_total_s": 1761.8,
+   "predictor_total_s": 996,
+   "calibrated_total_s": 1543,
+   "pre_s": 357.3,
+   "post_s": 842.3,
+   "pre_pred_s": 292,
+   "post_pred_s": 640
+  },
+  {
+   "run": "combo-superlite-w2",
+   "actual_build_s": 953.2,
+   "predictor_build_s": 798,
+   "k": 0.71,
+   "calibrated_build_s": 569,
+   "actual_total_s": 1757.6,
+   "predictor_total_s": 1008,
+   "calibrated_total_s": 1653,
+   "pre_s": 298.5,
+   "post_s": 505.9,
+   "pre_pred_s": 318,
+   "post_pred_s": 766
+  },
+  {
+   "run": "combo-superlite-w3",
+   "actual_build_s": 445.6,
+   "predictor_build_s": 528,
+   "k": 0.71,
+   "calibrated_build_s": 376,
+   "actual_total_s": 1485.6,
+   "predictor_total_s": 738,
+   "calibrated_total_s": 1384,
+   "pre_s": 350.3,
+   "post_s": 689.7,
+   "pre_pred_s": 292,
+   "post_pred_s": 716
+  }
+ ],
+ "fit": {
+  "r2_predictor": 0.18,
+  "r2_fit_in_sample": 0.32,
+  "corr_loc_vs_seconds": 0.54,
+  "median_dispatch_s": 138.9,
+  "sd_dispatch_s": 135.6,
+  "base_s": 54.0,
+  "per_100_loc_s": 50.6,
+  "per_component_s": -21.7,
+  "slow_tests_s": 22.7,
+  "n": 43,
+  "as_predictor_json": {
+   "base_min": 0.8997,
+   "per_loc_min": 0.008431,
+   "per_component_min": -0.362,
+   "slow_tests_min": 0.3782
+  }
+ }
+}
