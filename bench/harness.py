@@ -10,6 +10,7 @@ superpowers disabled). Both disable the user-level orchestrator skill.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -46,6 +47,15 @@ SMOKE_PROMPT = (
     "List the names of the skills and agent types available to you that come from plugins "
     "(one per line, no commentary), then end with the line BENCHMARK-COMPLETE."
 )
+
+def prompt_path(human: bool = False, task: str | None = None) -> Path:
+    """The task's own prompt (bench/tasks/<task>/prompt.md, or prompt-human.md in human mode) when it
+    exists; else the shared bench/prompt.md (prompt-human.md), which says "Build the project"."""
+    name = "prompt-human.md" if human else "prompt.md"
+    task = TASK if task is None else task
+    own = BENCH / "tasks" / task / name
+    return own if task != "sitegen" and own.is_file() else BENCH / name
+
 
 ARM_ARGS = {
     "superpowers": ["--settings", json.dumps({"skillOverrides": {"orchestrator": "off"}})],
@@ -167,8 +177,7 @@ def cmd_run(arm: str, rep: str, smoke: bool, human: bool = False) -> None:
     budget = os.environ.get("BENCH_BUDGET", "1" if smoke else "60")
     base = [claude, "-p"]
     extra = common_args(budget) + ARM_ARGS[arm]
-    prompt_file = "prompt-human.md" if human else "prompt.md"
-    prompt = SMOKE_PROMPT if smoke else (BENCH / prompt_file).read_text(encoding="utf-8")
+    prompt = SMOKE_PROMPT if smoke else prompt_path(human).read_text(encoding="utf-8")
 
     t0 = time.time()
     invoke(base + [prompt] + extra, run_dir, log, err)
@@ -236,10 +245,26 @@ def _ctx(u: dict) -> int:
 
 
 # ---- 0.3 benchmark metrics (T7) -------------------------------------------------------------
-# USD per million tokens: (input, output, cache write 5m, cache write 1h, cache read). Mirrors
-# skills/subagent-driven-development/config/models.json; review_cost_usd is an estimate.
-PRICES = {"opus": (4.0, 20.0, 5.0, 8.0, 0.2), "sonnet": (2.0, 10.0, 2.5, 4.0, 0.1),
-          "haiku": (0.1, 0.5, 0.125, 0.2, 0.01)}
+SKILL_DIR = ROOT / "skills" / "subagent-driven-development"
+MODELS_JSON = SKILL_DIR / "config" / "models.json"
+
+
+def load_prices(path: Path = MODELS_JSON) -> dict[str, tuple]:
+    """Per model: (input, output, cache write 5m, cache write 1h, cache read) in USD per token, read from
+    config/models.json (the one price table; predict.py reads it too). A cache write price that is
+    omitted defaults to input x cache_write_multipliers, as there."""
+    cfg = json.loads(Path(path).read_text(encoding="utf-8"))
+    per = float(cfg.get("per_tokens") or 1_000_000)
+    mult = cfg.get("cache_write_multipliers") or {}
+    out = {}
+    for name, m in (cfg.get("models") or {}).items():
+        w5 = m.get("cache_write_5m", m["input"] * mult.get("5m", 1.25))
+        w1 = m.get("cache_write_1h", m["input"] * mult.get("1h", 2.0))
+        out[name] = tuple(float(x) / per for x in (m["input"], m["output"], w5, w1, m["cache_read"]))
+    return out
+
+
+PRICES = load_prices()
 # Same patterns as hooks/block-unsafe-kill: kill by image name or pattern.
 UNSAFE_KILL = re.compile(
     r"(?:^|[\s;&|(`])(?:taskkill\b[^\n]*?\s//?im(?!\w)|(?:pkill|killall)(?![\w-])"
@@ -255,7 +280,22 @@ _VERDICT_RE = re.compile(r"^\W*verdict\b\s*[:\-—*]", re.I | re.M)
 _IMPL_DESC_RE = re.compile(r"(implement|t\d|task\s*[a-z]?\d)")
 _BATCH_RE = re.compile(r"batch|package|wave|\btasks\s+\w+\s*(?:[,/&+]|and)\s*\w+", re.I)
 _PRIME_HASH_RE = re.compile(r"prime[-_ ]hash\W{0,3}([0-9a-f]{8,64})", re.I)
-_SEAM_RE = re.compile(r"plan_tools\.py\s+(?:contract|seam)|\bseam[-_ ]?(?:check|smoke)\b", re.I)
+# The scripts run as `sl <tool> ...` (no .py) or `python .../<tool>.py ...`. A seam check is
+# `pt_review contract --seam Ta,Tb` (plan_tools dispatches `contract` to it).
+_TOOL_SEP = r"(?:\.py)?\s+"
+_SEAM_RE = re.compile(r"\b(?:plan_tools|pt_review)" + _TOOL_SEP + r"contract\b[^\n]*--seam"
+                      r"|\bseam[-_ ]?(?:check|smoke)\b", re.I)
+_SEAM_FAIL_RE = re.compile(r"^FAIL:|MISMATCH", re.M)
+_INCIDENT_ADD_RE = re.compile(r"\bincident" + _TOOL_SEP + r"add\b")
+_BUILD_PRIME_RE = re.compile(r"\bbuild_prime\b")
+_SCHEDULE_RE = re.compile(r"\bplan_tools" + _TOOL_SEP + r"schedule\b")
+# First line of build_prime.PREAMBLE: the shared prime text starts here in a dispatched prompt.
+PRIME_MARKER = "# superlite prime"
+# build_prime.py prints "<sha256> <size in bytes>".
+_PRIME_OUT_RE = re.compile(r"\b([0-9a-f]{64})\s+(\d+)\b")
+# pt_review contract --seam logs "verified: seam Ta↔Tb" or "seam Ta↔Tb: <mismatch>" (agent pt_review).
+_SEAM_OK_ENTRY = re.compile(r"^verified:\s*seam\s+(\S+)")
+_SEAM_BAD_ENTRY = re.compile(r"^seam\s+([^\s:]+):")
 
 
 def _text_of(x) -> str:
@@ -287,8 +327,13 @@ def _call_kind(inp: dict) -> str:
 
 
 def _plan_numbers(plan_text: str, results_text: str) -> tuple[dict, float | None, float | None]:
-    """Predicted per-task Est. time (s), predicted total (s) and predicted critical path (s), read
-    from the plan text and from `plan_tools.py schedule` output."""
+    """Predicted per-task Est. time (s), predicted total (s) and predicted critical path (s).
+
+    Sources, best first: `plan_tools.py schedule` output (the predictor's per-task times: a
+    `--json` object, or the plain `  T1: lane 1, 0.0 to 2.5 min (features)` lines), then the plan's
+    stated `Est. time` lines (for tasks the schedule did not list: the predictor wins over a stated
+    value). The totals come from schedule's JSON (`total_min`, `critical_path_min`) or its summary
+    line `critical path: T1 -> T7 (5.0 min) ... predicted total ~ 8.5 min`."""
     est: dict[str, float] = {}
     cur = None
     for line in plan_text.splitlines():
@@ -299,18 +344,43 @@ def _plan_numbers(plan_text: str, results_text: str) -> tuple[dict, float | None
         if m and cur:
             est[cur] = float(m.group(1)) * (60 if m.group(2) == "min" else 1)
     corpus = plan_text + "\n" + results_text
-    tot = re.findall(r"predicted total\s*[≈~=:]*\s*([\d.]+)\s*min", corpus, re.I)
-    cp = re.findall(r"critical path:[^\n(]*\(([\d.]+)\s*min\)", corpus, re.I)
-    return est, (float(tot[-1]) * 60 if tot else None), (float(cp[-1]) * 60 if cp else None)
+    tot = [float(x) * 60 for x in re.findall(r"predicted total\s*[≈~=:]*\s*([\d.]+)\s*min", corpus, re.I)]
+    cp = [float(x) * 60 for x in re.findall(r"critical path:[^\n(]*\(([\d.]+)\s*min\)", corpus, re.I)]
+    sched: dict[str, float] = {}
+    for m in re.finditer(r"^\s*(?:T|Task\s*)?([A-Za-z]?\d+[A-Za-z]?):\s*lane\s+\d+,\s*([\d.]+)\s+to\s+([\d.]+)\s+min",
+                         results_text, re.M | re.I):
+        sched[m.group(1).lower()] = (float(m.group(3)) - float(m.group(2))) * 60
+    for m in re.finditer(r"^\s*\{.*?^\}", results_text, re.M | re.S):      # `schedule --json`
+        try:
+            d = json.loads(m.group(0))
+        except ValueError:
+            continue
+        if not isinstance(d, dict) or "critical_path_min" not in d:
+            continue
+        for tid, t in (d.get("tasks") or {}).items():
+            if isinstance(t, dict) and isinstance(t.get("min"), (int, float)):
+                sched[re.sub(r"^(?:task|t)\s*", "", str(tid), flags=re.I).lower()] = float(t["min"]) * 60
+        if isinstance(d.get("total_min"), (int, float)):
+            tot.append(float(d["total_min"]) * 60)
+        if isinstance(d.get("critical_path_min"), (int, float)):
+            cp.append(float(d["critical_path_min"]) * 60)
+    est.update({k: v for k, v in sched.items() if v > 0})
+    return est, (tot[-1] if tot else None), (cp[-1] if cp else None)
 
 
-def flow_metrics(events: list[dict], t0: float, last_t: float | None, coordinator_turns: int) -> dict:
+def flow_metrics(events: list[dict], t0: float, last_t: float | None, coordinator_turns: int,
+                 incident_log: list[dict] | None = None, prime_bytes: bytes | None = None) -> dict:
     """Agent-flow metrics from one pass over the stream: assignments to agents (idle reuse, queued
     work, polls), per-assignment segments (system task_started .. task_notification, the only
     reliable busy/idle markers), the build/review/fix tail, and 0.3 script and safety signals.
     System events carry no timestamp, so their time is the latest timestamped event before them.
     Signals whose source events don't exist in older logs (polls, seams, prime hashes, plan
-    predictions) come back as None or 0 and never raise."""
+    predictions) come back as None or 0 and never raise.
+
+    `incident_log` is the run's .superlite/incidents.jsonl (what incident.py, pt_review contract,
+    probe_run and commit_task wrote); `prime_bytes` is .superlite/prime.md (what build_prime.py
+    wrote). When given they are the source for incident counts, seam checks and the prime hash;
+    otherwise those come from the commands and prompts in the stream."""
     stamped = any(_ts(e) is not None for e in events)
     tf: list[float] = []
     cur = 0.0
@@ -440,16 +510,16 @@ def flow_metrics(events: list[dict], t0: float, last_t: float | None, coordinato
                 cmd = str(inp.get("command") or "")
                 unsafe += bool(UNSAFE_KILL.search(cmd))
                 graphify += bool(re.search(r"\bgraphify\b", cmd, re.I))
-                if re.search(r"incident\.py\s+add", cmd):
+                if _INCIDENT_ADD_RE.search(cmd):
                     k = re.search(r"--kind[ =]+['\"]?([\w-]+)", cmd)
                     kind = k.group(1) if k else "unspecified"
                     incidents[kind] = incidents.get(kind, 0) + 1
                 if _SEAM_RE.search(cmd):
                     watch[b["id"]] = "seam"
                     seam_ids.append(b["id"])
-                elif re.search(r"build_prime\.py", cmd):
+                elif _BUILD_PRIME_RE.search(cmd):
                     watch[b["id"]] = "prime"
-                elif re.search(r"plan_tools\.py\s+schedule", cmd):
+                elif _SCHEDULE_RE.search(cmd):
                     watch[b["id"]] = "schedule"
             elif name == "Write" and re.search(r"plan.*\.md$", str(inp.get("file_path", "")).replace("\\", "/"), re.I):
                 plan_writes.append(str(inp.get("content") or ""))
@@ -541,7 +611,14 @@ def flow_metrics(events: list[dict], t0: float, last_t: float | None, coordinato
             w1 = cc.get("ephemeral_1h_input_tokens") or 0
             w5 = (u.get("cache_creation_input_tokens") or 0) - w1
             cost += ((u.get("input_tokens") or 0) * price[0] + (u.get("output_tokens") or 0) * price[1]
-                     + w5 * price[2] + w1 * price[3] + (u.get("cache_read_input_tokens") or 0) * price[4]) / 1e6
+                     + w5 * price[2] + w1 * price[3] + (u.get("cache_read_input_tokens") or 0) * price[4])
+
+    if incident_log is not None:        # the log counts every writer, not only `incident add` commands
+        incidents = {}
+        for e in incident_log:
+            if e.get("kind") != "verified":
+                k = str(e.get("kind") or "unspecified")
+                incidents[k] = incidents.get(k, 0) + 1
 
     # Relevance polls: a round is one coordinator message; its latency runs to the last answer.
     poll_s = None
@@ -551,20 +628,58 @@ def flow_metrics(events: list[dict], t0: float, last_t: float | None, coordinato
             ends = [s["end"] for s in segs if s["call"] in p["ids"]]
             poll_s += max(0.0, max(ends) - p["t"]) if ends else 0.0
 
-    # Seam checks and prime hashes: None while the source events don't exist.
-    seam_bad = sum(1 for i in seam_ids if "MISMATCH" in results.get(i, ""))
-    prime_expected = next((m.group(1) for i, k in watch.items() if k == "prime"
-                           for m in [re.search(r"\b([0-9a-f]{12,64})\b", results.get(i, ""))] if m), None)
-    hashes = {}
+    # Seam checks: the log is the record (the scripts run in the background, so the stream often has
+    # no command for them); else the stream's `contract --seam` commands and their output.
+    seam_ok, seam_bad_labels = 0, set()
+    for e in incident_log or []:
+        if e.get("agent") != "pt_review":
+            continue
+        ctx = str(e.get("context") or "")
+        if e.get("kind") == "verified" and _SEAM_OK_ENTRY.match(ctx):
+            seam_ok += 1
+        elif e.get("kind") != "verified" and _SEAM_BAD_ENTRY.match(ctx):
+            seam_bad_labels.add(_SEAM_BAD_ENTRY.match(ctx).group(1))
+    if seam_ok or seam_bad_labels:
+        seam_n, seam_bad = seam_ok + len(seam_bad_labels), len(seam_bad_labels)
+    else:
+        seam_n = len(seam_ids)
+        seam_bad = sum(1 for i in seam_ids if _SEAM_FAIL_RE.search(results.get(i, "")))
+
+    # Prime hash: the expected hash is the one build_prime.py wrote (prime.md, else its printed
+    # `<sha256> <size>`); each agent's prime is the first `size` bytes of its prompt from the
+    # prime's first line on. Older logs state `prime-hash: <hex>` in the prompt instead.
+    exp_hash = exp_size = None
+    if prime_bytes:
+        exp_hash, exp_size = hashlib.sha256(prime_bytes).hexdigest(), len(prime_bytes)
+    else:
+        for i, k in watch.items():
+            m = _PRIME_OUT_RE.search(results.get(i, "")) if k == "prime" else None
+            if m:
+                exp_hash, exp_size = m.group(1), int(m.group(2))
+                break
+    legacy_expected = next((m.group(1) for i, k in watch.items() if k == "prime"
+                            for m in [re.search(r"\b([0-9a-f]{12,64})\b", results.get(i, ""))] if m), None)
+    hashes: dict[str, str | None] = {}
     for cid, c in calls.items():
-        if _call_kind(c["inp"]) == "build":
-            m = _PRIME_HASH_RE.search(str(c["inp"].get("prompt") or ""))
+        prompt = str(c["inp"].get("prompt") or "")
+        at = prompt.find(PRIME_MARKER)
+        if at >= 0 and exp_size:
+            b = prompt[at:].encode("utf-8")
+            if hashlib.sha256(b[:exp_size]).hexdigest() == exp_hash:
+                hashes[cid] = exp_hash
+            elif hashlib.sha256(b[:exp_size - 1] + b"\n").hexdigest() == exp_hash:   # trailing newline lost
+                hashes[cid] = exp_hash
+            else:
+                hashes[cid] = "differs:" + hashlib.sha256(b[:exp_size]).hexdigest()
+        elif _call_kind(c["inp"]) == "build":
+            m = _PRIME_HASH_RE.search(prompt)
             hashes[cid] = m.group(1) if m else None
     prime_bad = None
-    if prime_expected or any(hashes.values()):
-        found = [h for h in hashes.values() if h]
-        prime_expected = prime_expected or max(set(found), key=found.count)
-        prime_bad = sum(1 for h in hashes.values() if h != prime_expected)
+    expected = exp_hash or legacy_expected
+    if expected or any(hashes.values()):
+        found = [h for h in hashes.values() if h and not h.startswith("differs:")]
+        expected = expected or (max(set(found), key=found.count) if found else None)
+        prime_bad = sum(1 for h in hashes.values() if h != expected)
 
     # Report lag: the agent's last event until the coordinator's next output.
     lags = []
@@ -596,8 +711,8 @@ def flow_metrics(events: list[dict], t0: float, last_t: float | None, coordinato
         "est_time_error": round(statistics.mean(errs), 3) if errs else None,
         "predicted_total_s": r1(pred_total),
         "actual_total_s": r1(last_t),
-        "seam_checks": len(seam_ids) or None,
-        "seam_mismatches": seam_bad if seam_ids else None,
+        "seam_checks": seam_n or None,
+        "seam_mismatches": seam_bad if seam_n else None,
         "reviews_per_task": round(len(plain) / task_count, 2) if task_count else None,
         "reviews_batched": sum(1 for s in plain if _BATCH_RE.search(calls[s["call"]]["inp"].get("description") or "")),
         "review_cost_usd": round(cost, 3),
@@ -610,7 +725,27 @@ def flow_metrics(events: list[dict], t0: float, last_t: float | None, coordinato
     }
 
 
-def dispatch_stats(events: list[dict]) -> dict:
+def read_run_artifacts(run_dir: Path | None) -> tuple[list[dict] | None, bytes | None]:
+    """(incident entries, prime bytes) from a run dir's .superlite/, None where the file is absent."""
+    if run_dir is None:
+        return None, None
+    sl = Path(run_dir) / ".superlite"
+    log = sl / "incidents.jsonl"
+    entries = None
+    if log.is_file():
+        entries = []
+        for ln in log.read_text(encoding="utf-8", errors="replace").splitlines():
+            try:
+                e = json.loads(ln)
+            except ValueError:
+                continue
+            if isinstance(e, dict):
+                entries.append(e)
+    prime = sl / "prime.md"
+    return entries, (prime.read_bytes() if prime.is_file() else None)
+
+
+def dispatch_stats(events: list[dict], run_dir: Path | None = None) -> dict:
     """Per-dispatch cache/context metrics, coordinator context, concurrency and a phase timeline.
     Assistant events are deduped by message.id; output_tokens is deliberately not used (it is an
     early-stream snapshot). Subagent events carry parent_tool_use_id == the coordinator's Agent
@@ -708,7 +843,7 @@ def dispatch_stats(events: list[dict]) -> dict:
               and not kind(d, "fix") and not kind(d, "re-review")]
     final = min(finals, key=lambda d: d["start_s"]) if finals else None
     last_t = max((t - t0 for t in stamps), default=None)
-    flow = flow_metrics(events, t0, last_t, len(coord))
+    flow = flow_metrics(events, t0, last_t, len(coord), *read_run_artifacts(run_dir))
     timeline = {
         "plan_write_s": round(plan_write, 1) if plan_write is not None else None,
         "first_implementer_s": min(d["start_s"] for d in impls) if impls else None,
@@ -818,7 +953,7 @@ def cmd_score(arm: str, rep: str) -> dict:
         "completed_marker": bool(res_all) and MARKER in (res_all[-1].get("result") or ""),
         "last_subtype": res_all[-1].get("subtype") if res_all else None,
         **stream_stats(events),
-        **dispatch_stats(events),
+        **dispatch_stats(events, run_dir),
         # The stream's last event excludes decider time spent between resumes; arm_wall_s is the real clock.
         **({"actual_total_s": meta["arm_wall_s"]} if "arm_wall_s" in meta else {}),
         "model_usage": model_usage,

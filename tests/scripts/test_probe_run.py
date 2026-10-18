@@ -4,6 +4,8 @@ Each test copies a tiny fixture project from tests/scripts/fixtures/probe_*/ int
 the runner against it as a subprocess, so nothing here touches the real tree.
 """
 import ast
+import importlib.util
+import tempfile
 import json
 import os
 import re
@@ -299,3 +301,57 @@ def test_commit_mode_via_sl_launcher_and_default_paths(tmp_path):
     res = json.loads((proj / ".superlite" / "probes" / "probe-results.json").read_text())
     assert res["files"] == ["src/parser.py"]
     assert {"category", "file", "line", "status", "group_id", "input_size", "message"} <= set(res["probes"][0])
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git not installed")
+def test_commit_mode_probes_the_commit_not_the_working_tree(tmp_path):
+    """HEAD has the guarded parser; the working tree has an unguarded, uncommitted one. Probing
+    HEAD must pass, and the temp checkout must be gone afterwards."""
+    proj = make_project(tmp_path)
+    git = ["git", "-c", "user.name=t", "-c", "user.email=t@example.com", "-C", str(proj)]
+    subprocess.run([*git, "init", "-q"], check=True)
+    subprocess.run([*git, "add", "-A"], check=True)
+    subprocess.run([*git, "commit", "-q", "-m", "good"], check=True)
+    parser = proj / "src" / "parser.py"
+    parser.write_text(parser.read_text().replace("GUARD = True", "GUARD = False"))
+    res = run(proj, "--commit", "HEAD", "--categories", "deep", "--files", "src/parser.py")
+    assert res["categories"]["deep"]["status"] == "pass" and not res["failures"], res
+    assert res["commit"] == "HEAD"
+    wt = subprocess.run([*git, "worktree", "list", "--porcelain"], capture_output=True, text=True).stdout
+    assert wt.count("worktree ") == 1
+    assert not list(Path(tempfile.gettempdir()).glob("probe-commit-*/tree/.git"))
+    # Committing the unguarded parser makes --commit HEAD fail, with the incident under the real root.
+    subprocess.run([*git, "add", "-A"], check=True)
+    subprocess.run([*git, "commit", "-q", "-m", "bad"], check=True)
+    res = run(proj, "--commit", "HEAD", "--categories", "deep")
+    assert [g["kind"] for g in res["failures"]] == ["crash"] and res["failures"][0]["file"] == "src/parser.py"
+    assert any(e["kind"] == "exception" for e in incidents(proj))
+    assert (proj / "tests" / "regression").is_dir()
+
+
+def test_checkout_commit_archive_fallback(tmp_path):
+    """Outside a worktree-capable repo state (no worktree support), git archive still works."""
+    if shutil.which("git") is None:
+        pytest.skip("git not installed")
+    spec = importlib.util.spec_from_file_location("probe_run_mod", RUNNER)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    proj = make_project(tmp_path)
+    git = ["git", "-c", "user.name=t", "-c", "user.email=t@example.com", "-C", str(proj)]
+    subprocess.run([*git, "init", "-q"], check=True)
+    subprocess.run([*git, "add", "-A"], check=True)
+    subprocess.run([*git, "commit", "-q", "-m", "x"], check=True)
+    real_run = subprocess.run
+
+    def no_worktree(cmd, *a, **k):
+        if "worktree" in cmd:
+            return subprocess.CompletedProcess(cmd, 1, b"", b"no")
+        return real_run(cmd, *a, **k)
+    mod.subprocess.run = no_worktree
+    try:
+        tree, repo = mod.checkout_commit(proj, "HEAD")
+    finally:
+        mod.subprocess.run = real_run
+    assert repo is None and (tree / "src" / "parser.py").is_file()
+    mod.remove_checkout(tree, repo)
+    assert not tree.exists()

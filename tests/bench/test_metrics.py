@@ -183,9 +183,12 @@ def test_relevance_polls_count_rounds_and_latency():
 
 
 def test_seam_checks_and_mismatches():
+    # Real pt_review output shapes ("PASS: verified: seam ..." / "FAIL: seam ...: N mismatch(es)");
+    # tests/bench/test_real_formats.py runs the real script for them.
     log = Log()
-    log.bash("uv run python .superlite/bin/plan_tools.py contract --plan P", 1, result="OK T3 -> T5")
-    log.bash("uv run python .superlite/bin/plan_tools.py contract --plan P", 5, result="MISMATCH T5 -> T7: arity")
+    log.bash("bash sl pt_review contract --plan P --seam T3,T5", 1, result="PASS: verified: seam T3↔T5")
+    log.bash("bash sl pt_review contract --plan P --seam T5,T7", 5,
+             result="x.py:3  part1 T5: missing parameter 'a'\nFAIL: seam T5↔T7: 1 mismatch(es)")
     s = harness.dispatch_stats(log.ev)
     assert (s["seam_checks"], s["seam_mismatches"]) == (2, 1)
 

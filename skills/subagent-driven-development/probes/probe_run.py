@@ -787,7 +787,8 @@ def _write_regression(cfg: Cfg, group: dict, rep: dict) -> str | None:
     except Exception:
         pass
     cat = group["category"]
-    outdir = cfg.root / "tests" / "regression"
+    out_root = getattr(cfg, "out_root", cfg.root)
+    outdir = out_root / "tests" / "regression"
     existing = sorted(outdir.glob(f"test_probe_{cat}_*.py")) if outdir.is_dir() else []
     n = 1 + max([int(re.search(r"_(\d+)\.py$", p.name).group(1)) for p in existing] or [0])
     text = REGRESSION_TEMPLATE.format(
@@ -800,11 +801,11 @@ def _write_regression(cfg: Cfg, group: dict, rep: dict) -> str | None:
 
     for p in existing:  # same content already written: reuse it
         if body(p.read_text(encoding="utf-8")) == body(text):
-            return p.relative_to(cfg.root).as_posix()
+            return p.relative_to(out_root).as_posix()
     outdir.mkdir(parents=True, exist_ok=True)
     path = outdir / f"test_probe_{cat}_{n}.py"
     path.write_text(text, encoding="utf-8")
-    return path.relative_to(cfg.root).as_posix()
+    return path.relative_to(out_root).as_posix()
 
 
 def shrink_group(pool: Pool, cfg: Cfg, group: dict, rep: dict) -> tuple[object, dict]:
@@ -907,7 +908,7 @@ def discover_files(root: Path, adapter: Path, probes_dir: Path | None) -> list[s
     return found
 
 
-def commit_files(root: Path, sha: str) -> list[str]:
+def commit_files(root: Path, sha: str, work: Path | None = None) -> list[str]:
     r = subprocess.run(["git", "-C", str(root), "diff-tree", "--no-commit-id", "--name-only", "-r",
                         "--root", "-z", "--relative", sha], capture_output=True, timeout=60)
     if r.returncode != 0:
@@ -916,7 +917,7 @@ def commit_files(root: Path, sha: str) -> list[str]:
     keep = []
     for n in names:
         p = Path(n)
-        if p.suffix in CODE_EXT and not (set(p.parts[:-1]) & SKIP_DIRS) and (root / n).exists():
+        if p.suffix in CODE_EXT and not (set(p.parts[:-1]) & SKIP_DIRS) and ((work or root) / n).exists():
             keep.append(p.as_posix())
     return keep
 
@@ -979,13 +980,70 @@ def is_verified(idx: dict, cat: str, f: str, sha: str) -> bool:
     return False
 
 
+def checkout_commit(root: Path, sha: str) -> tuple[Path, Path | None]:
+    """Materialise `sha` in a fresh temp dir: `git worktree add --detach`, else `git archive | tar`.
+    Returns (tree, worktree_repo_or_None); remove it with remove_checkout."""
+    tree = Path(tempfile.mkdtemp(prefix="probe-commit-")).resolve() / "tree"
+    r = subprocess.run(["git", "-C", str(root), "worktree", "add", "--detach", str(tree), sha],
+                       capture_output=True, timeout=120)
+    if r.returncode == 0:
+        return tree, root
+    shutil.rmtree(tree.parent, ignore_errors=True)
+    tree = Path(tempfile.mkdtemp(prefix="probe-commit-")).resolve() / "tree"
+    tree.mkdir()
+    arc = subprocess.run(["git", "-C", str(root), "archive", "--format=tar", sha],
+                         capture_output=True, timeout=120)
+    if arc.returncode != 0:
+        shutil.rmtree(tree.parent, ignore_errors=True)
+        raise RuntimeError(f"cannot check out {sha}: {arc.stderr.decode(errors='replace').strip()}")
+    import io
+    import tarfile
+    with tarfile.open(fileobj=io.BytesIO(arc.stdout)) as tf:
+        tf.extractall(tree)
+    return tree, None
+
+
+def remove_checkout(tree: Path, repo: Path | None) -> None:
+    if repo is not None:
+        subprocess.run(["git", "-C", str(repo), "worktree", "remove", "--force", str(tree)],
+                       capture_output=True, timeout=120)
+        subprocess.run(["git", "-C", str(repo), "worktree", "prune"], capture_output=True, timeout=60)
+    shutil.rmtree(tree.parent, ignore_errors=True)
+
+
 def run_main(a) -> int:
-    t_start = time.time()
     root = Path(a.root or os.getcwd()).resolve()
     adapter = Path(a.adapter).resolve() if a.adapter else root / ".superlite" / "probes" / "adapter.py"
     if not adapter.is_file():
         print(f"probe_run: adapter not found: {adapter}", file=sys.stderr)
         return 2
+    if not a.commit:
+        return _run_main(a, root, root, adapter)
+    # --commit: probe that commit's tree, not the working tree. The adapter is usually untracked
+    # (.superlite/), so a copy goes to the same relative place in the checkout for its relative ROOT.
+    try:
+        tree, repo = checkout_commit(root, a.commit)
+    except (RuntimeError, OSError, subprocess.SubprocessError) as e:
+        print(f"probe_run: {e}", file=sys.stderr)
+        return 2
+    try:
+        run_adapter = adapter
+        try:
+            rel = adapter.relative_to(root)
+            run_adapter = tree / rel
+            run_adapter.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(adapter, run_adapter)
+        except ValueError:
+            pass
+        return _run_main(a, root, tree, run_adapter)
+    finally:
+        remove_checkout(tree, repo)
+
+
+def _run_main(a, root: Path, work: Path, adapter: Path) -> int:
+    """Probe the tree at `work` (== root, or a checkout of --commit); logs, cache, results and
+    regression tests always go under `root`."""
+    t_start = time.time()
     probes_dir = Path(a.probes).resolve() if a.probes else None
     if probes_dir and not probes_dir.is_dir():
         print(f"probe_run: --probes is not a directory: {probes_dir}", file=sys.stderr)
@@ -996,18 +1054,19 @@ def run_main(a) -> int:
 
     out_path, log_path = under_root(a.out), under_root(a.log)
     cache_path = root / ".superlite" / "probes" / "cache.json"
-    cfg = Cfg(root, adapter, probes_dir, a.timeout)
+    cfg = Cfg(work, adapter, probes_dir, a.timeout)
+    cfg.out_root = root
 
     if a.commit:
         try:
-            files = commit_files(root, a.commit)
+            files = commit_files(root, a.commit, work)
         except (RuntimeError, OSError) as e:
             print(f"probe_run: {e}", file=sys.stderr)
             return 2
     elif a.files:
         files = [norm_file(root, f) for f in a.files.split(",") if f.strip()]
     else:
-        files = discover_files(root, adapter, probes_dir) or [cfg.rel(str(adapter))]
+        files = discover_files(work, adapter, probes_dir) or [cfg.rel(str(adapter))]
 
     catalog, load_errors = load_catalog(probes_dir)
     try:
@@ -1018,7 +1077,7 @@ def run_main(a) -> int:
 
     pack_digest = sha_bytes(*[p.read_bytes() for p in probe_modules(probes_dir)])
     adapter_bytes = adapter.read_bytes()
-    file_sha = {f: sha_bytes((root / f).read_bytes() if (root / f).is_file() else b"<missing>",
+    file_sha = {f: sha_bytes((work / f).read_bytes() if (work / f).is_file() else b"<missing>",
                              adapter_bytes, pack_digest.encode()) for f in files}
     log_entries = read_log(log_path)
     vidx = verified_index(log_entries, root)
@@ -1028,6 +1087,7 @@ def run_main(a) -> int:
     pool = Pool(cfg, nworkers)
     results_run_seconds = 0.0
     results: dict = {"version": 1, "root": str(root), "adapter": cfg.rel(str(adapter)),
+                     **({"commit": a.commit} if a.commit else {}),
                      "files": files, "selected_categories": selected, "categories": {},
                      "probes": [], "failures": [], "load_errors": load_errors}
     try:

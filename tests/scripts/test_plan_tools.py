@@ -505,6 +505,8 @@ def test_schedule_target_accepts_both_header_forms(tmp_path):
 
 
 SKILL_FIELDS = {"components": 1, "loc": 120, "tests": "slow", "model": "sonnet"}
+# Same time prediction, but docs=30000 gives a predicted context of about 40k (not mergeable).
+SKILL_BIG = {"features": "components=1 loc=120 tests=slow model=sonnet docs=30000"}
 
 
 def test_skill_fields_are_features(tmp_path):
@@ -535,14 +537,49 @@ def test_predictor_wins_over_stated_time_when_features_present(tmp_path):
 
 def test_lint_cap_uses_predicted_time_over_stated(tmp_path):
     # stated 5 min would break the 3-min cap, but the features predict ~2.5
-    p = make_plan(tmp_path, [dict(id="T1", time=5, **SKILL_FIELDS)])
+    p = make_plan(tmp_path, [dict(id="T1", time=5, **SKILL_BIG)])
     assert pt("lint", "--plan", p).returncode == 0
     assert pt("lint", "--plan", p, "--stated").returncode == 1
 
 
 def test_lint_warns_without_features_or_time(tmp_path):
-    p = make_plan(tmp_path, [{"id": "T1"}, dict(id="T2", **SKILL_FIELDS), {"id": "T3", "time": 2}])
+    p = make_plan(tmp_path, [{"id": "T1"}, dict(id="T2", ctx=40, **SKILL_BIG), {"id": "T3", "time": 2}])
     cp = pt("lint", "--plan", p)
     assert cp.returncode == 0, cp.both
     assert "WARNING: T1 has no features" in cp.out
     assert "T2 has no features" not in cp.out and "T3 has no features" not in cp.out
+
+
+def _pred_ctx(tmp_path):
+    p = make_plan(tmp_path, [dict(id="T1", ctx=40, **SKILL_BIG)], name="probe_ctx.md")
+    return predict_json("--plan", p)["tasks"]["T1"]["est_context"]
+
+
+def test_predicted_context_wins_over_stated_when_features_present(tmp_path):
+    assert _pred_ctx(tmp_path) > 36000
+    # stated 24k would make T1 mergeable (variable 6k < 18k); the predicted ~40k does not
+    p = make_plan(tmp_path, [dict(id="T1", ctx=24, **SKILL_BIG), {"id": "T2", "ctx": 24}], [("T1", "T2")])
+    data = json.loads(pt("taskgraph", "--plan", p, "--format", "full").out)
+    assert [m["task"] for m in data["mergeable"]] == ["T2"]       # T2 has no features: stated 24k used
+    forced = json.loads(pt("taskgraph", "--plan", p, "--format", "full", "--stated").out)
+    assert "T1" in [m["task"] for m in forced["mergeable"]]
+
+
+def test_lint_notes_stated_context_off_by_more_than_25_percent(tmp_path):
+    pred = _pred_ctx(tmp_path)
+    near = round(pred / 1000)
+    p = make_plan(tmp_path, [dict(id="T1", ctx=near, **SKILL_BIG)], name="near.md")
+    cp = pt("lint", "--plan", p)
+    assert cp.returncode == 0 and "NOTE" not in cp.out, cp.out
+    far = int(pred / 1000 * 0.5)
+    p = make_plan(tmp_path, [dict(id="T1", ctx=far, **SKILL_BIG)], name="far.md")
+    cp = pt("lint", "--plan", p)
+    assert cp.returncode == 0 and f"NOTE: T1 states Est. context {far}k" in cp.out and "predicted value is used" in cp.out
+
+
+def test_lint_context_ceiling_uses_predicted_when_features_present(tmp_path):
+    # stated 85k would break the 80k ceiling, but the features predict about 40k
+    p = make_plan(tmp_path, [dict(id="T1", ctx=85, **SKILL_BIG)])
+    cp = pt("lint", "--plan", p)
+    assert "ceiling" not in cp.out and "NOTE: T1 states Est. context 85k" in cp.out
+    assert "T1: Est. context 85k is over the 80k ceiling" in pt("lint", "--plan", p, "--stated").out

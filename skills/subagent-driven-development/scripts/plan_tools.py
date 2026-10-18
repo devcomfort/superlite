@@ -466,6 +466,18 @@ def effective_times(plan: Plan, graph: dict[str, list[str]], args) -> tuple[dict
     return times, source
 
 
+def effective_context(task: Task, models: dict, coef: dict, force_stated: bool = False) -> tuple[int | None, str]:
+    """Per-task context tokens. Features present: the predictor's value wins, as for Est. time. A stated
+    `Est. context` is used only for a task with no features, or with --stated. (None, "none") if neither."""
+    predict = _predict()
+    stated = task.stated_context
+    if stated is not None and (force_stated or not task.has_features):
+        return stated, "stated"
+    if task.has_features:
+        return predict.predict_task(task, models, coef)["est_context"], "predicted"
+    return None, "none"
+
+
 def simulate(times: dict[str, float], graph: dict[str, list[str]], cap: int) -> dict:
     order = {t: i for i, t in enumerate(sorted(graph, key=nkey))}
     done: dict[str, float] = {}
@@ -811,8 +823,7 @@ def mergeable_tasks(plan: Plan, graph, times, args) -> list[dict]:
         if task is None:
             ctx[tid], known_time[tid] = None, None
             continue
-        pred = predict.predict_task(task, models, coef) if task.features else None
-        ctx[tid] = task.stated_context if task.stated_context is not None else (pred["est_context"] if pred else None)
+        ctx[tid], _ = effective_context(task, models, coef, bool(getattr(args, "stated", False)))
         known_time[tid] = times.get(tid)
     anc = ancestors(graph)
     cp = set(simulate(times, graph, 1000)["critical_path"])
@@ -1021,9 +1032,18 @@ def lint_plan(plan: Plan, args) -> tuple[list[str], list[str]]:
     max_chars = getattr(args, "max_chars", DEFAULT_MAX_CHARS)
     if len(plan.text) > max_chars:
         issues.append(f"plan is {len(plan.text)} chars, over the {max_chars} cap")
+    predict = _predict()
+    models = predict.load_models(getattr(args, "models", None))
+    coef = predict.load_coef(getattr(args, "coef", None))
     for t in plan.tasks:
-        if t.stated_context is not None and t.stated_context > CTX_CEILING:
-            issues.append(f"{t.id}: Est. context {t.stated_context // 1000}k is over the {CTX_CEILING // 1000}k ceiling; split it")
+        c, src = effective_context(t, models, coef, bool(getattr(args, "stated", False)))
+        if c is not None and c > CTX_CEILING:
+            what = "Est. context" if src == "stated" else "predicted context"
+            issues.append(f"{t.id}: {what} {c // 1000}k is over the {CTX_CEILING // 1000}k ceiling; split it")
+        if src == "predicted" and t.stated_context:
+            if abs(t.stated_context - c) / c > 0.25:
+                warnings.append(f"NOTE: {t.id} states Est. context {t.stated_context // 1000}k but the predictor "
+                                f"says {c // 1000}k (over 25% apart); the predicted value is used")
 
     # mergeable / over cap, and the time-target warning
     miss: str | None = None
