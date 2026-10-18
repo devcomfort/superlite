@@ -19,19 +19,21 @@ A probe module defines ``CATEGORY`` (str) and ``PROBES`` (list of dicts built wi
 ``good_args``, ``good_stdin`` and ``good_path`` (the adapter's GOOD_* values).
 Raise ``Skip`` from ``make`` when the probe cannot apply on this machine.
 """
+# Complexity notation:
+#   s = number of size steps passed to P (at most 3)
 
 
-class Seq(list):
-    """An ordered list of inputs for one entry kind."""
+class Seq(list):  # O(1)
+    """An ordered list of inputs for one entry kind."""  # O(1)
 
 
-class Skip(Exception):
-    pass
+class Skip(Exception):  # O(1)
+    pass  # O(1)
 
 
-DEEP = (100, 2000, 10000)
+DEEP = (100, 2000, 10000)  # O(1)
 
 
-def P(name, entry, make, sizes=(None,), expect=None, check=None, regress=True):
-    return {"name": name, "entry": entry, "make": make, "sizes": list(sizes),
-            "expect": expect, "check": check, "regress": regress}
+def P(name, entry, make, sizes=(None,), expect=None, check=None, regress=True):  # O(s)
+    return {"name": name, "entry": entry, "make": make, "sizes": list(sizes),  # O(s)
+            "expect": expect, "check": check, "regress": regress}  # O(1)

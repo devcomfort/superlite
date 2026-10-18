@@ -16,95 +16,101 @@ or read file this task touches, +1 for the same package (directory). A winner
 needs a margin of at least 3. Eligible: context_k + Est. context <= 80, fewer
 than 3 tasks done, idle <= 50 min. Busy agents are never candidates.
 """
-import argparse
-import json
-import posixpath
-import sys
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import next_tasks as nt  # noqa: E402
+# Complexity notation:
+# n = tasks in the plan, e = dependency edges, L = plan text size
+# a = agents in the pool (<= ~10), t = tasks done per agent (< 3), F = files known per agent (own files + owned by its tasks)
+# o = Owns paths of the task being assigned, d = its dependencies, len = path length
+# "process spawn" = fork/exec of sl/bash; dominates wall time over the O(...) CPU term
+import argparse  # O(1)
+import json  # O(1)
+import posixpath  # O(1)
+import sys  # O(1)
+from pathlib import Path  # O(1)
 
-MAX_CONTEXT_K = 80.0
-MAX_TASKS = 3
-MAX_IDLE_MIN = 50.0
-MARGIN = 3
-DEFAULT_CONTEXT_K = 20.0
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # O(1)
+import next_tasks as nt  # noqa: E402 | O(1)
+
+MAX_CONTEXT_K = 80.0  # O(1)
+MAX_TASKS = 3  # O(1)
+MAX_IDLE_MIN = 50.0  # O(1)
+MARGIN = 3  # O(1)
+DEFAULT_CONTEXT_K = 20.0  # O(1)
 
 
-def package(path):
-    return posixpath.dirname(path.replace("\\", "/"))
+def package(path):  # O(len path)
+    return posixpath.dirname(path.replace("\\", "/"))  # O(len path)
 
 
-def eligibility(agent, est_context):
+def eligibility(agent, est_context):  # O(1)
     """None when eligible, else a short reason."""
-    if float(agent.get("context_k", 0)) + est_context > MAX_CONTEXT_K:
-        return "context over 80k"
-    if len(agent.get("tasks", [])) >= MAX_TASKS:
-        return "3 tasks done"
-    if float(agent.get("idle_min", 0)) > MAX_IDLE_MIN:
-        return "idle over 50 min"
-    return None
+    if float(agent.get("context_k", 0)) + est_context > MAX_CONTEXT_K:  # O(1)
+        return "context over 80k"  # O(1)
+    if len(agent.get("tasks", [])) >= MAX_TASKS:  # O(1)
+        return "3 tasks done"  # O(1)
+    if float(agent.get("idle_min", 0)) > MAX_IDLE_MIN:  # O(1)
+        return "idle over 50 min"  # O(1)
+    return None  # O(1)
 
 
-def score(agent, task_id, deps, owns, info):
-    s = 0
-    built = set(agent.get("tasks", []))
-    if built & set(deps):
-        s += 5
-    files = {f.replace("\\", "/") for f in agent.get("files", [])}
-    for t in built:
-        files.update(info.get(t, {}).get("owns", []))
-    s += 3 * sum(1 for o in owns if any(nt.owns_match(f, [o]) for f in files))
-    pkgs = {package(f) for f in files if package(f)}
-    if any(package(o) in pkgs for o in owns if package(o)):
-        s += 1
-    return s
+def score(agent, task_id, deps, owns, info):  # O(t + d + o*F*len)
+    s = 0  # O(1)
+    built = set(agent.get("tasks", []))  # O(t)
+    if built & set(deps):  # O(t + d)
+        s += 5  # O(1)
+    files = {f.replace("\\", "/") for f in agent.get("files", [])}  # O(F*len)
+    for t in built:  # O(t) iterations
+        files.update(info.get(t, {}).get("owns", []))  # O(owns of t)
+    s += 3 * sum(1 for o in owns if any(nt.owns_match(f, [o]) for f in files))  # O(o*F*len) nested any() over owns x files
+    pkgs = {package(f) for f in files if package(f)}  # O(F*len)
+    if any(package(o) in pkgs for o in owns if package(o)):  # O(o*len)
+        s += 1  # O(1)
+    return s  # O(1)
 
 
-def decide(scores):
+def decide(scores):  # O(a log a)
     """scores: {id: score} of eligible agents -> 'agent=<id>' | 'poll' | 'fresh'."""
-    if not scores:
-        return "fresh"
-    ranked = sorted(scores.values(), reverse=True)
-    top = ranked[0]
-    second = ranked[1] if len(ranked) > 1 else 0
-    if top > 0 and top - second >= MARGIN:
-        winner = [k for k, v in scores.items() if v == top][0]
-        return f"agent={winner}"
-    return "poll"
+    if not scores:  # O(1)
+        return "fresh"  # O(1)
+    ranked = sorted(scores.values(), reverse=True)  # O(a log a)
+    top = ranked[0]  # O(1)
+    second = ranked[1] if len(ranked) > 1 else 0  # O(1)
+    if top > 0 and top - second >= MARGIN:  # O(1)
+        winner = [k for k, v in scores.items() if v == top][0]  # O(a)
+        return f"agent={winner}"  # O(1)
+    return "poll"  # O(1)
 
 
-def main(argv=None):
-    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--task", required=True)
-    ap.add_argument("--pool", default=".superlite/pool.json")
-    ap.add_argument("--plan")
-    a = ap.parse_args(argv)
-    pool_path = Path(a.pool)
+def main(argv=None):  # O(L + a*o*F*len) + process spawn
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])  # O(1)
+    ap.add_argument("--task", required=True)  # O(1)
+    ap.add_argument("--pool", default=".superlite/pool.json")  # O(1)
+    ap.add_argument("--plan")  # O(1)
+    a = ap.parse_args(argv)  # O(1)
+    pool_path = Path(a.pool)  # O(1)
     pool = json.loads(pool_path.read_text(encoding="utf-8")) if pool_path.exists() \
-        else {"agents": []}
-    plan = a.plan or pool.get("plan") or nt.DEFAULT_PLAN
-    graph = nt.taskgraph(plan)
-    info = nt.parse_plan(plan)
-    if a.task not in graph and a.task not in info:
-        nt.die(f"unknown task {a.task}")
-    task = info.get(a.task, {})
-    deps = graph.get(a.task, [])
-    owns = task.get("owns", [])
-    est_context = task.get("est_context") or DEFAULT_CONTEXT_K
-    scores = {}
-    for agent in pool.get("agents", []):
-        if agent.get("busy") or agent.get("status") == "busy":
-            continue
-        why = eligibility(agent, est_context)
-        if why:
-            print(f"evict={agent['id']} {why}", file=sys.stderr)
-            continue
-        scores[agent["id"]] = score(agent, a.task, deps, owns, info)
-    print(decide(scores))
-    return 0
+        else {"agents": []}  # O(1)
+    plan = a.plan or pool.get("plan") or nt.DEFAULT_PLAN  # O(1)
+    graph = nt.taskgraph(plan)  # O(n + e) + process spawn
+    info = nt.parse_plan(plan)  # O(L)
+    if a.task not in graph and a.task not in info:  # O(1)
+        nt.die(f"unknown task {a.task}")  # O(1)
+    task = info.get(a.task, {})  # O(1)
+    deps = graph.get(a.task, [])  # O(1)
+    owns = task.get("owns", [])  # O(1)
+    est_context = task.get("est_context") or DEFAULT_CONTEXT_K  # O(1)
+    scores = {}  # O(1)
+    for agent in pool.get("agents", []):  # O(a) iterations
+        if agent.get("busy") or agent.get("status") == "busy":  # O(1)
+            continue  # O(1)
+        why = eligibility(agent, est_context)  # O(1)
+        if why:  # O(1)
+            print(f"evict={agent['id']} {why}", file=sys.stderr)  # O(1)
+            continue  # O(1)
+        scores[agent["id"]] = score(agent, a.task, deps, owns, info)  # O(t + d + o*F*len)
+    print(decide(scores))  # O(1)
+    return 0  # O(1)
 
 
-if __name__ == "__main__":
-    sys.exit(main())
+if __name__ == "__main__":  # O(1)
+    sys.exit(main())  # O(1)

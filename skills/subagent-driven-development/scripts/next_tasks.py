@@ -6,209 +6,215 @@
 Also hosts the small plan-parsing helpers the other run scripts import
 (plan sections, Owns expansion, task graph via plan_tools). Stdlib only.
 """
-import argparse
-import json
-import os
-import re
-import subprocess
-import sys
-from pathlib import Path
 
-SCRIPTS = Path(__file__).resolve().parent
-DEFAULT_PLAN = ".superlite/plan.md"
-DEFAULT_TIME = 1.0
+# Complexity notation:
+# n = tasks in the plan, e = dependency edges, L = plan text size (chars)
+# R = ready tasks (<= n), cap = max parallel tasks, c = committed/running ids passed in
+# f = Owns paths per task, P = paths after brace expansion, len = length of the string at hand
+# "process spawn" = fork/exec of sl/bash; dominates wall time over the O(...) CPU term
+import argparse  # O(1)
+import json  # O(1)
+import os  # O(1)
+import re  # O(1)
+import subprocess  # O(1)
+import sys  # O(1)
+from pathlib import Path  # O(1)
 
-_HEADING = re.compile(r"^(#{1,6})\s+(.*?)\s*$")
-_TASK_HEADING = re.compile(r"^###\s+(T\d+[A-Za-z]?)\b(.*)$")
+SCRIPTS = Path(__file__).resolve().parent  # O(1)
+DEFAULT_PLAN = ".superlite/plan.md"  # O(1)
+DEFAULT_TIME = 1.0  # O(1)
+
+_HEADING = re.compile(r"^(#{1,6})\s+(.*?)\s*$")  # O(1)
+_TASK_HEADING = re.compile(r"^###\s+(T\d+[A-Za-z]?)\b(.*)$")  # O(1)
 
 
-def die(msg, code=2):
-    print(f"error: {msg}", file=sys.stderr)
-    sys.exit(code)
+def die(msg, code=2):  # O(len msg)
+    print(f"error: {msg}", file=sys.stderr)  # O(1)
+    sys.exit(code)  # O(1)
 
 
-def sl_command(tool, *args):
+def sl_command(tool, *args):  # O(args)
     """Command line that runs another superlite tool through the `sl` launcher (D18).
 
     SUPERLITE_SL replaces the launcher (tests); SUPERLITE_BASH picks the bash."""
-    launcher = os.environ.get("SUPERLITE_SL") or str(SCRIPTS / "sl")
-    return [os.environ.get("SUPERLITE_BASH") or "bash", launcher, tool,
-            *map(str, args)]
+    launcher = os.environ.get("SUPERLITE_SL") or str(SCRIPTS / "sl")  # O(1)
+    return [os.environ.get("SUPERLITE_BASH") or "bash", launcher, tool,  # O(args)
+            *map(str, args)]  # O(args)
 
 
-def run_tool(tool, *args):
-    env = {**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}  # cp1252 pipes on Windows
-    return subprocess.run(sl_command(tool, *args), capture_output=True, text=True,
-                          encoding="utf-8", errors="replace", env=env)
+def run_tool(tool, *args):  # O(output) + process spawn
+    env = {**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}  # cp1252 pipes on Windows | O(env)
+    return subprocess.run(sl_command(tool, *args), capture_output=True, text=True,  # O(output) + process spawn
+                          encoding="utf-8", errors="replace", env=env)  # O(1)
 
 
-def taskgraph(plan):
+def taskgraph(plan):  # O(n + e) + process spawn
     """Task -> dependencies, from `plan_tools taskgraph` (through sl)."""
-    r = run_tool("plan_tools", "taskgraph", "--plan", plan)
-    if r.returncode != 0:
-        die(f"taskgraph failed: {(r.stderr or r.stdout).strip()}", r.returncode)
-    try:
-        graph = json.loads(r.stdout)
-    except json.JSONDecodeError as e:
-        die(f"taskgraph printed invalid JSON: {e}")
-    return {k: list(v) for k, v in graph.items()}
+    r = run_tool("plan_tools", "taskgraph", "--plan", plan)  # O(output) + process spawn
+    if r.returncode != 0:  # O(1)
+        die(f"taskgraph failed: {(r.stderr or r.stdout).strip()}", r.returncode)  # O(1)
+    try:  # O(1)
+        graph = json.loads(r.stdout)  # O(output) parse
+    except json.JSONDecodeError as e:  # O(1)
+        die(f"taskgraph printed invalid JSON: {e}")  # O(1)
+    return {k: list(v) for k, v in graph.items()}  # O(n + e)
 
 
-def add_incident(log, file, line, context, kind, agent, resolution=None):
+def add_incident(log, file, line, context, kind, agent, resolution=None):  # O(1) + process spawn
     """Log one incident through `sl incident add`; failures only warn."""
-    cmd = ["add", "--file", file, "--line", line, "--context", context,
-           "--agent", agent, "--kind", kind, "--log", log]
-    if resolution:
-        cmd += ["--resolution", resolution]
-    r = run_tool("incident", *cmd)
-    if r.returncode != 0:
-        print(f"warning: incident not logged: {(r.stderr or r.stdout).strip()}",
-              file=sys.stderr)
+    cmd = ["add", "--file", file, "--line", line, "--context", context,  # O(1)
+           "--agent", agent, "--kind", kind, "--log", log]  # O(1)
+    if resolution:  # O(1)
+        cmd += ["--resolution", resolution]  # O(1)
+    r = run_tool("incident", *cmd)  # O(output) + process spawn
+    if r.returncode != 0:  # O(1)
+        print(f"warning: incident not logged: {(r.stderr or r.stdout).strip()}",  # O(1)
+              file=sys.stderr)  # O(1)
 
 
-def read_text(path):
-    p = Path(path)
-    if not p.exists():
-        die(f"file not found: {path}")
-    return p.read_text(encoding="utf-8-sig").replace("\r\n", "\n").replace("\r", "\n")
+def read_text(path):  # O(L)
+    p = Path(path)  # O(1)
+    if not p.exists():  # O(1)
+        die(f"file not found: {path}")  # O(1)
+    return p.read_text(encoding="utf-8-sig").replace("\r\n", "\n").replace("\r", "\n")  # O(L)
 
 
-def parse_plan(plan):
+def parse_plan(plan):  # O(L)
     """{task id: info}, in plan order.
 
     info: title, est_time (min), est_context (k tokens), owns (list), body.
     """
-    lines = read_text(plan).split("\n")
-    tasks, cur = {}, None
-    for line in lines:
-        m = _TASK_HEADING.match(line)
-        if m:
-            cur = {"id": m.group(1), "head": m.group(2), "body": []}
-            tasks[cur["id"]] = cur
-            continue
-        if _HEADING.match(line) and len(_HEADING.match(line).group(1)) <= 3:
-            cur = None
-            continue
-        if cur is not None:
-            cur["body"].append(line)
-    out = {}
-    for tid, t in tasks.items():
-        body = "\n".join(t["body"])
-        head = t["head"]
-        parts = [p.strip() for p in head.split("·")]
-        if parts and parts[0] == "":
-            parts = parts[1:]
-        title = re.sub(r"\s+", " ", parts[0]) if parts else ""
-        out[tid] = {
-            "id": tid,
-            "title": title or tid,
-            "est_time": _num(r"Est\.?\s*time:?\*{0,2}\s*([\d.]+)\s*min", head, body),
-            "est_context": _num(r"Est\.?\s*context:?\*{0,2}\s*([\d.]+)\s*k", head, body),
-            "owns": parse_owns(_field(body, "Owns")),
-            "body": body,
-        }
-    return out
+    lines = read_text(plan).split("\n")  # O(L)
+    tasks, cur = {}, None  # O(1)
+    for line in lines:  # O(L lines) iterations
+        m = _TASK_HEADING.match(line)  # O(len line)
+        if m:  # O(1)
+            cur = {"id": m.group(1), "head": m.group(2), "body": []}  # O(1)
+            tasks[cur["id"]] = cur  # O(1)
+            continue  # O(1)
+        if _HEADING.match(line) and len(_HEADING.match(line).group(1)) <= 3:  # O(len line) regex, run twice
+            cur = None  # O(1)
+            continue  # O(1)
+        if cur is not None:  # O(1)
+            cur["body"].append(line)  # O(1)
+    out = {}  # O(1)
+    for tid, t in tasks.items():  # O(n) iterations
+        body = "\n".join(t["body"])  # O(len body)
+        head = t["head"]  # O(1)
+        parts = [p.strip() for p in head.split("·")]  # O(len head)
+        if parts and parts[0] == "":  # O(1)
+            parts = parts[1:]  # O(1)
+        title = re.sub(r"\s+", " ", parts[0]) if parts else ""  # O(len title)
+        out[tid] = {  # O(1)
+            "id": tid,  # O(1)
+            "title": title or tid,  # O(1)
+            "est_time": _num(r"Est\.?\s*time:?\*{0,2}\s*([\d.]+)\s*min", head, body),  # O(len body) regex
+            "est_context": _num(r"Est\.?\s*context:?\*{0,2}\s*([\d.]+)\s*k", head, body),  # O(len body) regex
+            "owns": parse_owns(_field(body, "Owns")),  # O(len body + owns text)
+            "body": body,  # O(1)
+        }  # O(1)
+    return out  # O(1)
 
 
-def _num(pattern, head, body):
-    for text in (head, body):
-        m = re.search(pattern, text, re.I)
-        if m:
-            return float(m.group(1))
-    return None
+def _num(pattern, head, body):  # O(len text)
+    for text in (head, body):  # O(1) iterations (2 texts)
+        m = re.search(pattern, text, re.I)  # O(len text)
+        if m:  # O(1)
+            return float(m.group(1))  # O(1)
+    return None  # O(1)
 
 
-def _field(body, name):
-    m = re.search(rf"^\*\*{name}:\*\*[ \t]*(.*)$", body, re.M)
-    return m.group(1) if m else ""
+def _field(body, name):  # O(len body)
+    m = re.search(rf"^\*\*{name}:\*\*[ \t]*(.*)$", body, re.M)  # O(len body)
+    return m.group(1) if m else ""  # O(1)
 
 
-def split_top(text, sep=","):
+def split_top(text, sep=","):  # O(len text)
     """Split on `sep` outside braces, parentheses and backtick spans."""
-    parts, depth, tick, cur = [], 0, False, []
-    for ch in text:
-        if ch == "`":
-            tick = not tick
-        elif not tick and ch in "{(":
-            depth += 1
-        elif not tick and ch in "})":
-            depth -= 1
-        if ch == sep and depth == 0 and not tick:
-            parts.append("".join(cur))
-            cur = []
-        else:
-            cur.append(ch)
-    parts.append("".join(cur))
-    return parts
+    parts, depth, tick, cur = [], 0, False, []  # O(1)
+    for ch in text:  # O(len text) iterations
+        if ch == "`":  # O(1)
+            tick = not tick  # O(1)
+        elif not tick and ch in "{(":  # O(1)
+            depth += 1  # O(1)
+        elif not tick and ch in "})":  # O(1)
+            depth -= 1  # O(1)
+        if ch == sep and depth == 0 and not tick:  # O(1)
+            parts.append("".join(cur))  # O(len cur)
+            cur = []  # O(1)
+        else:  # O(1)
+            cur.append(ch)  # O(1)
+    parts.append("".join(cur))  # O(len cur)
+    return parts  # O(1)
 
 
-def brace_expand(s):
-    m = re.search(r"\{([^{}]*)\}", s)
-    if not m:
-        return [s]
-    out = []
-    for alt in m.group(1).split(","):
-        out.extend(brace_expand(s[:m.start()] + alt.strip() + s[m.end():]))
-    return out
+def brace_expand(s):  # O(P * len), P = number of expansions
+    m = re.search(r"\{([^{}]*)\}", s)  # O(len)
+    if not m:  # O(1)
+        return [s]  # O(1)
+    out = []  # O(1)
+    for alt in m.group(1).split(","):  # O(alts) iterations
+        out.extend(brace_expand(s[:m.start()] + alt.strip() + s[m.end():]))  # O(len) + recursion
+    return out  # O(1)
 
 
-def parse_owns(text):
+def parse_owns(text):  # O(len + P * len)
     """Owned paths from an `**Owns:**` line. A trailing `/` means a directory."""
-    text = re.sub(r"\([^()]*\)", "", text)  # parenthetical notes and children
-    paths = []
-    for part in split_top(text):
-        part = part.replace("`", "").strip().rstrip(".;").strip()
-        if not part:
-            continue
-        for p in brace_expand(part):
-            p = p.strip().replace("\\", "/")
-            if p:
-                paths.append(p)
-    return paths
+    text = re.sub(r"\([^()]*\)", "", text)  # parenthetical notes and children | O(len)
+    paths = []  # O(1)
+    for part in split_top(text):  # O(parts) iterations
+        part = part.replace("`", "").strip().rstrip(".;").strip()  # O(len part)
+        if not part:  # O(1)
+            continue  # O(1)
+        for p in brace_expand(part):  # O(P) iterations
+            p = p.strip().replace("\\", "/")  # O(len path)
+            if p:  # O(1)
+                paths.append(p)  # O(1)
+    return paths  # O(1)
 
 
-def owns_match(path, owns):
-    path = path.replace("\\", "/")
-    for o in owns:
-        if o.endswith("/"):
-            if path.startswith(o):
-                return True
-        elif path == o or path.startswith(o + "/"):
-            return True
-    return False
+def owns_match(path, owns):  # O(f * len)
+    path = path.replace("\\", "/")  # O(1)
+    for o in owns:  # O(f) iterations
+        if o.endswith("/"):  # O(1)
+            if path.startswith(o):  # O(1)
+                return True  # O(1)
+        elif path == o or path.startswith(o + "/"):  # O(1)
+            return True  # O(1)
+    return False  # O(1)
 
 
-def csv(value):
-    return [x.strip() for x in (value or "").split(",") if x.strip()]
+def csv(value):  # O(len)
+    return [x.strip() for x in (value or "").split(",") if x.strip()]  # O(len)
 
 
-def ready_tasks(graph, times, committed, running, cap):
-    free = cap - len(running)
-    if free <= 0:
-        return []
-    done, busy = set(committed), set(running)
-    ready = [t for t, deps in graph.items()
-             if t not in done and t not in busy and all(d in done for d in deps)]
-    order = {t: i for i, t in enumerate(graph)}
-    ready.sort(key=lambda t: (-times.get(t, DEFAULT_TIME), order[t]))
-    return ready[:free]
+def ready_tasks(graph, times, committed, running, cap):  # O(n + e + R log R)
+    free = cap - len(running)  # O(1)
+    if free <= 0:  # O(1)
+        return []  # O(1)
+    done, busy = set(committed), set(running)  # O(c)
+    ready = [t for t, deps in graph.items()  # O(n + e)
+             if t not in done and t not in busy and all(d in done for d in deps)]  # O(1)
+    order = {t: i for i, t in enumerate(graph)}  # O(n)
+    ready.sort(key=lambda t: (-times.get(t, DEFAULT_TIME), order[t]))  # O(R log R)
+    return ready[:free]  # O(cap)
 
 
-def main(argv=None):
-    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--plan", default=DEFAULT_PLAN)
-    ap.add_argument("--committed", default="")
-    ap.add_argument("--running", default="")
-    ap.add_argument("--cap", type=int, default=10)
-    a = ap.parse_args(argv)
-    graph = taskgraph(a.plan)
-    info = parse_plan(a.plan)
-    times = {t: (info[t]["est_time"] if t in info and info[t]["est_time"] is not None
-                 else DEFAULT_TIME) for t in graph}
-    for t in ready_tasks(graph, times, csv(a.committed), csv(a.running), a.cap):
-        print(t)
-    return 0
+def main(argv=None):  # O(L + n + e + R log R) + process spawn
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])  # O(1)
+    ap.add_argument("--plan", default=DEFAULT_PLAN)  # O(1)
+    ap.add_argument("--committed", default="")  # O(1)
+    ap.add_argument("--running", default="")  # O(1)
+    ap.add_argument("--cap", type=int, default=10)  # O(1)
+    a = ap.parse_args(argv)  # O(1)
+    graph = taskgraph(a.plan)  # O(n + e) + process spawn
+    info = parse_plan(a.plan)  # O(L)
+    times = {t: (info[t]["est_time"] if t in info and info[t]["est_time"] is not None  # O(n)
+                 else DEFAULT_TIME) for t in graph}  # O(1)
+    for t in ready_tasks(graph, times, csv(a.committed), csv(a.running), a.cap):  # O(cap) iterations after O(n + e + R log R) ready_tasks
+        print(t)  # O(1)
+    return 0  # O(1)
 
 
-if __name__ == "__main__":
-    sys.exit(main())
+if __name__ == "__main__":  # O(1)
+    sys.exit(main())  # O(1)

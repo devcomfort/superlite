@@ -1,25 +1,27 @@
 #!/usr/bin/env bash
+# Complexity notation:
+#   s = bytes of skills/using-superlite/SKILL.md; each ${s//x/y} is one O(s) pass
 # SessionStart hook for the superlite plugin (Claude Code, Cursor, Copilot CLI, Muse and other SDK-style hosts)
 
-set -euo pipefail
+set -euo pipefail  # O(1)
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"  # O(1) + subshell
+PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"  # O(1) + subshell
 
-content=$(cat "${PLUGIN_ROOT}/skills/using-superlite/SKILL.md" 2>&1 || echo "Error reading using-superlite skill")
+content=$(cat "${PLUGIN_ROOT}/skills/using-superlite/SKILL.md" 2>&1 || echo "Error reading using-superlite skill")  # O(s) read
 
-escape_for_json() {
-    local s="$1"
-    s="${s//\/\\}"
-    s="${s//\"/\\\"}"
-    s="${s//$'\n'/\n}"
-    s="${s//$'\r'/\r}"
-    s="${s//$'\t'/\t}"
-    printf '%s' "$s"
-}
+escape_for_json() {  # O(s)
+    local s="$1"  # O(s)
+    s="${s//\/\\}"  # O(s)
+    s="${s//\"/\\\"}"  # O(s)
+    s="${s//$'\n'/\n}"  # O(s)
+    s="${s//$'\r'/\r}"  # O(s)
+    s="${s//$'\t'/\t}"  # O(s)
+    printf '%s' "$s"  # O(s)
+}  # O(1)
 
-escaped=$(escape_for_json "$content")
-session_context="You have superlite. Its 'superlite:using-superlite' skill follows; load other skills with the Skill tool.\n\n${escaped}"
+escaped=$(escape_for_json "$content")  # O(s) + subshell
+session_context="You have superlite. Its 'superlite:using-superlite' skill follows; load other skills with the Skill tool.\n\n${escaped}"  # O(s)
 
 # Emit only the field the current platform consumes:
 # - Cursor sets CURSOR_PLUGIN_ROOT (and may also set CLAUDE_PLUGIN_ROOT) and expects additional_context (snake_case).
@@ -28,14 +30,14 @@ session_context="You have superlite. Its 'superlite:using-superlite' skill follo
 # - Muse sets MUSE_PLUGIN_ROOT; it accepts the Claude-style nested output.
 # - Copilot CLI (sets COPILOT_CLI=1) and unknown hosts expect top-level additionalContext (SDK standard).
 # printf only (no heredoc) to avoid the bash 5.3+ heredoc hang.
-if [ -n "${CURSOR_PLUGIN_ROOT:-}" ]; then
-  printf '{"additional_context":"%s"}\n' "$session_context"
-elif [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -z "${COPILOT_CLI:-}" ] && [ -z "${MUSE_PLUGIN_ROOT:-}" ]; then
-  printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$session_context"
-elif [ -n "${MUSE_PLUGIN_ROOT:-}" ]; then
-  printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$session_context"
-else
-  printf '{"additionalContext":"%s"}\n' "$session_context"
-fi
+if [ -n "${CURSOR_PLUGIN_ROOT:-}" ]; then  # O(1)
+  printf '{"additional_context":"%s"}\n' "$session_context"  # O(s)
+elif [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -z "${COPILOT_CLI:-}" ] && [ -z "${MUSE_PLUGIN_ROOT:-}" ]; then  # O(1)
+  printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$session_context"  # O(s)
+elif [ -n "${MUSE_PLUGIN_ROOT:-}" ]; then  # O(1)
+  printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$session_context"  # O(s)
+else  # O(1)
+  printf '{"additionalContext":"%s"}\n' "$session_context"  # O(s)
+fi  # O(1)
 
-exit 0
+exit 0  # O(1)
