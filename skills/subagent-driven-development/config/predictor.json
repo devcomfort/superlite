@@ -1,0 +1,32 @@
+{
+  "_comment": "Starting priors for predict.py. Refit with: predict.py --refit bench/results/*.json. Anchors: 1 component, ~120 LOC, slow tests = ~2.5 min; fast single-component tasks of 50-170 LOC = 1.6-2.3 min.",
+  "version": 1,
+  "reference_model": "sonnet",
+  "default_model": "sonnet",
+  "defaults": {"components": 1, "loc": 100, "tests": "fast"},
+  "time": {
+    "base_min": 0.80,
+    "per_component_min": 0.45,
+    "per_loc_min": 0.0065,
+    "slow_tests_min": 0.50
+  },
+  "context": {
+    "prefix": 18000,
+    "base": 3300,
+    "per_loc": 21.6,
+    "per_doc_char": 0.45,
+    "per_read_loc": 36.9,
+    "read_loc_per_consume": 80,
+    "margin": 1.12
+  },
+  "cost": {
+    "fresh_input_tokens": 4000,
+    "calls_base": 4,
+    "calls_per_100_loc": 3,
+    "output_per_loc": 40,
+    "output_per_call": 120,
+    "cache_ttl": "5m"
+  },
+  "schedule": {"tail_min": 3.5},
+  "fit": null
+}

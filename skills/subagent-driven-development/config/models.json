@@ -1,0 +1,32 @@
+{
+  "_comment": "Claude 5.5 prices in USD per million tokens, plus measured output speed. Edit this file when prices or speeds change. cache_write_5m and cache_write_1h default to input x cache_write_multipliers when omitted.",
+  "currency": "USD",
+  "per_tokens": 1000000,
+  "cache_write_multipliers": {"5m": 1.25, "1h": 2.0},
+  "models": {
+    "opus": {
+      "input": 4.00,
+      "output": 20.00,
+      "cache_write_5m": 5.00,
+      "cache_write_1h": 8.00,
+      "cache_read": 0.20,
+      "output_tps": 45
+    },
+    "sonnet": {
+      "input": 2.00,
+      "output": 10.00,
+      "cache_write_5m": 2.50,
+      "cache_write_1h": 4.00,
+      "cache_read": 0.10,
+      "output_tps": 80
+    },
+    "haiku": {
+      "input": 0.10,
+      "output": 0.50,
+      "cache_write_5m": 0.125,
+      "cache_write_1h": 0.20,
+      "cache_read": 0.01,
+      "output_tps": 150
+    }
+  }
+}
