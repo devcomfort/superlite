@@ -33,6 +33,8 @@ RESULTS = BENCH / "results"
 TASK = os.environ.get("BENCH_TASK", "sitegen")
 TASK_SPEC = BENCH / "task" / "SPEC.md" if TASK == "sitegen" else BENCH / "tasks" / TASK / "SPEC.md"
 TASK_HIDDEN = BENCH / "hidden_tests" if TASK == "sitegen" else BENCH / "tasks" / TASK / "hidden"
+# Optional starting repo: bench/tasks/<task>/start/ is copied into the run dir and committed before the arm starts.
+TASK_START = None if TASK == "sitegen" else BENCH / "tasks" / TASK / "start"
 PREFIX = "" if TASK == "sitegen" else f"{TASK}-"
 MARKER = "BENCHMARK-COMPLETE"
 MAX_RESUMES = 6
@@ -138,6 +140,19 @@ def decide(claude: str, question: str, cwd: Path) -> tuple[str, float, float]:
         return "Approved. Continue, and decide anything else yourself.", secs, 0.0
 
 
+def seed_run_dir(run_dir: Path) -> None:
+    """Fresh git repo in run_dir holding SPEC.md and, if the task has one, its start/ tree."""
+    has_start = TASK_START is not None and TASK_START.is_dir()
+    if has_start:
+        shutil.copytree(TASK_START, run_dir, dirs_exist_ok=True,
+                        ignore=shutil.ignore_patterns(".git", "__pycache__", "*.pyc"))
+    shutil.copy(TASK_SPEC, run_dir / "SPEC.md")
+    git(run_dir, "init", "-q", "-b", "main")
+    git(run_dir, "add", "-A" if has_start else "SPEC.md")
+    git(run_dir, "-c", "user.name=bench", "-c", "user.email=bench@local", "commit", "-qm",
+        "Add SPEC.md and starting repo" if has_start else "Add SPEC.md")
+
+
 def cmd_run(arm: str, rep: str, smoke: bool, human: bool = False) -> None:
     claude = shutil.which("claude") or "claude"
     name = f"{PREFIX}{arm}-{rep}" + ("-smoke" if smoke else "")
@@ -147,10 +162,7 @@ def cmd_run(arm: str, rep: str, smoke: bool, human: bool = False) -> None:
     if run_dir.exists():
         sys.exit(f"run dir exists: {run_dir}")
     run_dir.mkdir(parents=True)
-    shutil.copy(TASK_SPEC, run_dir / "SPEC.md")
-    git(run_dir, "init", "-q", "-b", "main")
-    git(run_dir, "add", "SPEC.md")
-    git(run_dir, "-c", "user.name=bench", "-c", "user.email=bench@local", "commit", "-qm", "Add SPEC.md")
+    seed_run_dir(run_dir)
 
     budget = os.environ.get("BENCH_BUDGET", "1" if smoke else "60")
     base = [claude, "-p"]
