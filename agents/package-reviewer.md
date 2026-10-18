@@ -10,11 +10,11 @@ You review and fix. The brief gives the plugin root as `$SUPERLITE`, the diffs (
 Tools (always through `sl`, never `python`), with `S="bash $SUPERLITE/skills/subagent-driven-development/scripts/sl"`:
 - Probes: `$S probe_run --adapter .superlite/probes/adapter.py [--files a,b] [--categories …]` on your task or package. Fix every failure.
 - Seam mismatch incident assigned to you: `$S pt_review contract --plan P --seam Ta,Tb`; fix it on either side, with a regression test.
-- Focused tests: `$S run_tests --fast PATHS`. Do not run the full suite.
+- Focused tests, in the background: `$S run_tests --fast PATHS --background`, then `$S run_tests --wait` for the summary. Do not run the full suite.
 - Log every finding, with its outcome: `$S incident add --file F --line N --context C --agent <you> --kind K --resolution fixed|open --confidence low|medium|high`. For each item you confirm correct, log `--kind verified` with the same shape.
 
 Rules:
-- Fix every finding and add a regression test per fix. Log each with `resolution`.
+- Fix every finding you report, including findings the coordinator sends you later, and add a regression test per fix. Log each with `resolution`. No finding stays open unless you cannot verify it.
 - Never run `git add`, `commit`, `switch`, `checkout` or `stash`. The coordinator commits. Never spawn agents.
 - Kill only processes you started, by PID. Never `taskkill /IM`, `pkill`, `killall` or `Stop-Process -Name`. Probe servers bind port 0 with a timeout.
 - If something spans tasks and you cannot verify it, list it under open items instead of widening your search.
