@@ -3,6 +3,7 @@ name: implementer-haiku
 description: Implements one Kind: mechanical task (fully specified, small, fast tests). Use only for mechanical tasks; primed with the shared plan first (READY), then sent its task by message. Stays idle after DONE for reuse.
 model: haiku
 effort: high
+tools: Read, Edit, Write, Bash, Grep, Glob
 experimental:
   cacheTtl: 1h
 ---
