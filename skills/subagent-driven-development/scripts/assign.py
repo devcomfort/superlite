@@ -42,14 +42,18 @@ def package(path):  # O(len path)
     return posixpath.dirname(path.replace("\\", "/"))  # O(len path)
 
 
-def eligibility(agent, est_context):  # O(1)
-    """None when eligible, else a short reason."""
-    if float(agent.get("context_k", 0)) + est_context > MAX_CONTEXT_K:  # O(1)
-        return "context over 80k"  # O(1)
-    if len(agent.get("tasks", [])) >= MAX_TASKS:  # O(1)
-        return "3 tasks done"  # O(1)
-    if float(agent.get("idle_min", 0)) > MAX_IDLE_MIN:  # O(1)
-        return "idle over 50 min"  # O(1)
+def eligibility(agent, est_context, limits=None):  # O(1)
+    """None when eligible, else a short reason. `limits` (config/routing.json, per tier) overrides the defaults."""
+    lim = limits or {}  # O(1)
+    max_ctx = float(lim.get("max_context_k", MAX_CONTEXT_K))  # O(1)
+    max_tasks = int(lim.get("max_tasks", MAX_TASKS))  # O(1)
+    max_idle = float(lim.get("max_idle_min", MAX_IDLE_MIN))  # O(1)
+    if float(agent.get("context_k", 0)) + est_context > max_ctx:  # O(1)
+        return f"context over {max_ctx:g}k"  # O(1)
+    if len(agent.get("tasks", [])) >= max_tasks:  # O(1)
+        return f"{max_tasks} tasks done"  # O(1)
+    if float(agent.get("idle_min", 0)) > max_idle:  # O(1)
+        return f"idle over {max_idle:g} min"  # O(1)
     return None  # O(1)
 
 

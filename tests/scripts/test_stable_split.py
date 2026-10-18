@@ -191,7 +191,7 @@ def _roots(tmp_path):
 
 
 def _lines(cp):
-    return [ln.split()[0] for ln in cp.out.splitlines() if ln.strip()]
+    return [ln.split()[0] for ln in cp.out.splitlines() if ln.strip() and not ln.startswith("T0 ")]
 
 
 def test_dispatch_and_next_tasks_offer_everything_without_stable_json(tmp_path):
@@ -227,3 +227,97 @@ def test_producer_note_after_task_ids_is_not_part_of_the_signature():
     assert sig["args"] == "wb, port: int = 0"
     assert sig["ret"] == "HTTPServer"
     assert pt.parse_signature("f(x) -> int (T4, T5)")["ret"] == "int"
+
+
+# ---------------------------------------------------------------- DISPATCH NOW, lint log, rewrites
+
+def _sl(tmp_path):
+    return tmp_path / ".superlite"
+
+
+def _log(tmp_path):
+    return [json.loads(ln) for ln in (_sl(tmp_path) / "lint-log.jsonl").read_text(encoding="utf-8").splitlines()]
+
+
+def _pool(tmp_path, *tasks):
+    (_sl(tmp_path) / "pool.json").write_text(json.dumps(
+        {"agents": [{"id": "a1", "tasks": list(tasks), "current": tasks[-1] if tasks else None, "busy": True}]}), encoding="utf-8")
+
+
+def _consumer_plan(tmp_path, t1_produces=PROD, t3_consumes="f(x: int) -> int", t3_title="task t3"):
+    tasks = [{"id": "T1", "time": 2, "produces": t1_produces}, {"id": "T2", "time": 2},
+             {"id": "T3", "time": 2, "title": t3_title, "consumes": t3_consumes}]
+    return make_plan(tmp_path, tasks)
+
+
+def test_dispatch_now_line_and_lint_log(tmp_path):
+    cp = pt("lint", "--stable", "--plan", _two(tmp_path, PROD))
+    assert cp.out.rstrip().splitlines()[-1] == "DISPATCH NOW: T1 T2"
+    (e,) = _log(tmp_path)
+    assert (e["stable"], e["fix"]) == (2, 0)
+    assert e["newly_stable"] == ["T1", "T2"] and e["dispatched"] == [] and e["pending"] == ["T1", "T2"]
+    assert "time" in e
+
+
+def test_dispatch_now_skips_dispatched_and_none_when_empty(tmp_path):
+    p = _two(tmp_path, PROD)
+    pt("lint", "--stable", "--plan", p)
+    _pool(tmp_path, "T1")
+    cp = pt("lint", "--stable", "--plan", p)
+    assert cp.out.rstrip().splitlines()[-1] == "DISPATCH NOW: T2"
+    _pool(tmp_path, "T1", "T2")
+    cp = pt("lint", "--stable", "--plan", p)
+    assert cp.out.rstrip().splitlines()[-1] == "DISPATCH NOW: none"
+    last = _log(tmp_path)[-1]
+    assert last["dispatched"] == ["T1", "T2"] and last["pending"] == [] and last["newly_stable"] == []
+
+
+def test_fix_loop_newly_stable_listed_once(tmp_path):
+    p = make_plan(tmp_path, [{"id": "T1", "time": 2}, {"id": "T2", "time": 9}, {"id": "T3", "time": 2}])  # T2 oversize
+    cp = pt("lint", "--stable", "--plan", p)
+    assert cp.out.rstrip().splitlines()[-1] == "DISPATCH NOW: T1 T3" and "T2:" in cp.out
+    _pool(tmp_path, "T1", "T3")
+    make_plan(tmp_path, [{"id": "T1", "time": 2}, {"id": "T2", "time": 3}, {"id": "T3", "time": 2}])  # edit T2 only
+    cp = pt("lint", "--stable", "--plan", p)
+    assert cp.out.rstrip().splitlines()[-1] == "DISPATCH NOW: T2"
+    assert _log(tmp_path)[-1]["newly_stable"] == ["T2"]
+
+
+def test_whole_file_rewrite_keeping_dispatched_blocks_is_not_frozen(tmp_path):
+    p = _consumer_plan(tmp_path, t3_consumes="g(y: int) -> int")  # T3 consumes nothing produced: FIX
+    cp = pt("lint", "--stable", "--plan", p)
+    assert cp.out.rstrip().splitlines()[-1] == "DISPATCH NOW: T1 T2"
+    _pool(tmp_path, "T1", "T2")
+    p = _consumer_plan(tmp_path)  # whole file rewritten, T1 and T2 blocks byte-identical
+    cp = pt("lint", "--stable", "--plan", p)
+    assert "FROZEN" not in cp.out and cp.returncode == 0, cp.both
+    assert cp.out.rstrip().splitlines()[-1] == "DISPATCH NOW: T3"
+
+
+def test_whole_file_rewrite_changing_dispatched_block_is_frozen(tmp_path):
+    p = make_plan(tmp_path, [{"id": "T1", "time": 2, "title": "first"}, {"id": "T2", "time": 2}])
+    pt("lint", "--stable", "--plan", p)
+    _pool(tmp_path, "T1")
+    p = make_plan(tmp_path, [{"id": "T1", "time": 3, "title": "first reworded"}, {"id": "T2", "time": 2}])
+    cp = pt("lint", "--stable", "--plan", p)
+    assert cp.returncode == 1
+    assert "FROZEN: T1 block changed after dispatch" in cp.out
+    assert cp.out.rstrip().splitlines()[-1] == "DISPATCH NOW: T2"
+    assert _log(tmp_path)[-1]["frozen"] == 1
+
+
+def test_undispatched_stable_block_may_change(tmp_path):
+    p = make_plan(tmp_path, [{"id": "T1", "time": 2, "title": "first"}])
+    pt("lint", "--stable", "--plan", p)
+    p = make_plan(tmp_path, [{"id": "T1", "time": 3, "title": "first reworded"}])
+    cp = pt("lint", "--stable", "--plan", p)
+    assert "FROZEN" not in cp.out and cp.returncode == 0
+
+
+def test_rewrite_dropping_a_dispatched_block_is_frozen(tmp_path):
+    p = make_plan(tmp_path, [{"id": "T1", "time": 2}, {"id": "T2", "time": 2}])
+    pt("lint", "--stable", "--plan", p)
+    _pool(tmp_path, "T1")
+    p = make_plan(tmp_path, [{"id": "T2", "time": 2}])
+    cp = pt("lint", "--stable", "--plan", p)
+    assert "FROZEN: T1 dispatched block was removed" in cp.out

@@ -5,31 +5,31 @@ description: Use when executing a superlite plan that has a %% taskgraph. Runs a
 
 # Subagent-Driven Development
 
-You are the coordinator. You decide, dispatch and rule; scripts do everything with a definite answer; agents design, write, review and fix. Read each script's one-line output, never raw logs. One line of narration between tool calls. Never paste skill text into a brief.
+You are the coordinator. You decide, dispatch and rule; scripts do everything with a definite answer; agents design, write, review and fix. Read each script's one-line output, never raw logs. One line of narration per tool call; never paste skill text into a brief.
 
 Shorthand used below (every agent brief states `SUPERLITE=<path>`):
-`SUPERLITE` = the plugin root, two levels above this skill's "Base directory for this skill: ..." path: `SUPERLITE="$(cd "<base dir>/../.." && pwd)"`, passing the base dir through `cygpath -u` first when that exists. `SL="$SUPERLITE/skills/subagent-driven-development/scripts/sl"`; always run it as `bash "$SL" ...`. `PLAN` = the plan file; pass `--plan $PLAN` everywhere. Tool exit 3 means no Python: log it with `bash "$SL" incident add` and continue.
+`SUPERLITE` = the plugin root, two levels above this skill's "Base directory for this skill: ..." path: `SUPERLITE="$(cd "<base dir>/../.." && pwd)"`, passing the base dir through `cygpath -u` first when that exists. `SL="$SUPERLITE/skills/subagent-driven-development/scripts/sl"`; always run it as `bash "$SL" ...`. `PLAN` = the plan file; pass `--plan $PLAN` everywhere. Exit 3 means no Python: `bash "$SL" incident add` it and continue.
 
-**You never edit code or run raw `pytest`; fixes go to fixer agents: tiers, escalation and contract in `fixing.md` (Fixing). Never pass `model`; never use `general-purpose` or ad-hoc reviewers.**
+**You never edit code or run raw `pytest`; fixes go to fixer agents: tiers, escalation and contract in `fixing.md` (Fixing). Never pass `model`; no ad-hoc reviewers.**
 
-**Rulings, not stalls.** Decide conflicts and plan defects yourself (spec binds). Append `Ruling: <decision> - <why> - <cost if wrong>` to `.superlite/progress.md`; `finish` collects them.
+**Rulings, not stalls.** Decide conflicts and plan defects yourself (spec binds). Append `Ruling: <decision> - <why> - <cost if wrong>` to `.superlite/progress.md`.
 
 ## Setup
 
 ```mermaid
 flowchart LR
-  B[branch + start SHA] --> K[skeleton + stubs: Wave 0 commit]
+  B[branch + start SHA] --> K[wave0: T0 skeleton agent]
   B --> P[build_prime, first batch primed]
   K --> A[adapter]
   P -. READY .-> T[first tasks]
   K --> T
 ```
 
-- Branch `superlite/<topic>` if on the default branch (no worktree, no prompt). Write the start SHA to `.superlite/progress.md` (`- start <sha>`). `commit_task` adds `.superlite/` to `.git/info/exclude` itself.
-- Wave 0, yourself, one commit of exact paths (never stage everything): project manifest, package inits, test config, shared error types, plus `bash "$SL" plan_tools stubs --plan $PLAN`. Stubs are contracts: nobody changes a signature without your ruling. Then `bash "$SL" plan_tools adapter --plan $PLAN` (writes `.superlite/probes/adapter.py` from the `Probe entry` lines).
-- Prime during Wave 0: `bash "$SL" build_prime --plan $PLAN --spec SPEC --sections "1,3"` prints `hash size` and writes `.superlite/prime.md`. Record the hash. Start the first ready tasks' agents now (see the loop); their tasks go out once Wave 0 is committed. Never retype the prime (a changed byte breaks the cache).
-- Incident log: `.superlite/incidents.jsonl` (append-only; agents call `bash "$SL" incident add`). You log BLOCKED and NEEDS_CONTEXT with `--agent coordinator`.
-- Graphify: `bash "$SL" graphify_gate` prints JSON. `use` false: skip. Installed: `graphify update .`. `needs_install` and `allowed` (approved at the gate, or `SUPERLITE_ALLOW_INSTALL=graphify`): `uv tool install graphifyy`, `graphify extract . --code-only`. Otherwise skip. You alone run `graphify update .` after each package commits.
+- Branch `superlite/<topic>` if on the default branch (no worktree). Write the start SHA to `.superlite/progress.md` (`- start <sha>`). `commit_task` adds `.superlite/` to `.git/info/exclude` itself.
+- Wave 0 is never yours: `lint --stable` builds `.superlite/briefs/wave0.md` from the plan and prints `START FIRST:` with the Agent line for `superlite:implementer-haiku` (T0; `bash "$SL" wave0 --plan $PLAN` reprints it). Send it first in the same message as the stable set; commit with `commit_task T0`. No skeleton files by you; tasks do not wait for T0. Then `bash "$SL" plan_tools adapter --plan $PLAN`.
+- Prime now: `bash "$SL" build_prime --plan $PLAN --spec SPEC --sections "1,3"` prints `hash size` and writes `.superlite/prime.md`. Start the first ready tasks' agents now. Never retype the prime (a byte change breaks the cache).
+- Incidents: `.superlite/incidents.jsonl` (agents call `bash "$SL" incident add`); you log BLOCKED and NEEDS_CONTEXT with `--agent coordinator`.
+- Graphify: `bash "$SL" graphify_gate` prints JSON. `use` false: skip. Installed: `graphify update .`. `needs_install` and `allowed`: `uv tool install graphifyy`, `graphify extract . --code-only`. You alone run `graphify update .` after each package commits.
 
 ## Planning check
 
@@ -38,11 +38,15 @@ flowchart LR
   S[schedule --insert] --> L[lint]
   L -- MISSED TARGET --> R{re-split / stub, or Ruling}
   R --> S
-  L -- STABLE --> D[dispatch at once]
-  L -- FIX tasks --> F[patch only those] --> L
+  L -- DISPATCH NOW --> D[dispatch whole stable set]
+  D --> F[then patch FIX tasks] --> L
 ```
 
-One coordinator for the whole plan. Run `bash "$SL" plan_tools schedule --plan $PLAN --insert` (target from the plan header), then `bash "$SL" plan_tools lint --plan $PLAN --spec SPEC --stable`: it lists STABLE and FIX tasks with reasons and writes `.superlite/stable.json`. `dispatch` offers only stable tasks: run it and start them at once, same turn. Then patch only the FIX tasks (edits, never full rewrites), rerun lint, and dispatch the newly stable ones. Stable and dispatched interfaces are frozen: `FROZEN:` means a later change, so make it a follow-up fix task. Plan-level issues never block stable tasks; `**Status:** draft` is an optional manual hold. `MISSED TARGET: ... critical path T1 -> T5` is a warning: split or stub the named tasks, or `Ruling: accept predicted <N> min - <why sequential> - <cost>`. `NOTE:` (under the band) is advice.
+Fixed order, nothing waits on plan polishing: write plan -> `bash "$SL" plan_tools schedule --plan $PLAN --insert` (target from the plan header) -> `bash "$SL" plan_tools lint --plan $PLAN --spec SPEC --stable` (lists STABLE and FIX tasks, writes `.superlite/stable.json`; prints `SEND BEFORE ANY PLAN EDIT:`, ends with `DISPATCH NOW: T2 T4` or `none`) -> `dispatch` and start every task on that line in the same turn -> only then patch the FIX tasks (edits or a full rewrite, as many rounds as needed) -> re-lint -> dispatch the newly stable tasks -> repeat until lint passes. No agent waits on plan polishing: never patch, rewrite or re-lint while a `DISPATCH NOW` task is unsent.
+
+Each dispatch round, in the same message as the Agent calls, run the `THEN LOG` line lint prints (it appends `unblocked: dispatched T2 T4 at HH:MM:SS; waiting on fixes: T1 T3` to `.superlite/progress.md`). `finish` checks it against `.superlite/lint-log.jsonl`.
+
+Dispatched tasks are frozen: a rewrite must keep their blocks byte-identical, else lint says `FROZEN:` (restore the block; a real change is a follow-up fix task). `**Status:** draft` is an optional manual hold. `MISSED TARGET: ... critical path T1 -> T5` is a warning: split or stub the named tasks, or `Ruling: accept predicted <N> min - <why sequential> - <cost>`. `NOTE:` is advice.
 
 ## The scheduling loop
 
@@ -57,14 +61,14 @@ flowchart TB
   C -. both sides in .-> SM[pt_review contract seam]
 ```
 
-Keep `.superlite/pool.json`: `{"agents":[{"id","tasks":[...],"files":[...],"context_k":N,"idle_min":N,"busy":false,"current":"Tn"}]}`. Sending a task or spawning its agent sets `busy: true` and `current: Tn`; `commit_task` clears `current` when it commits Tn. The ledger and `current` are the state: you keep no lists.
+Keep `.superlite/pool.json`: `{"agents":[{"id","tasks":[...],"files":[...],"context_k":N,"idle_min":N,"busy":false,"current":"Tn","tier":"haiku|sonnet"}]}` (`tier` = the line's; T0's is `haiku`). Sending a task or spawning its agent sets `busy: true` and `current: Tn`; `commit_task` clears `current` when it commits Tn. The ledger and `current` are the state: you keep no lists.
 
-1. `bash "$SL" dispatch --plan $PLAN --cap 10` prints, per ready task, longest first: `Tn agent=ID`, `Tn poll ID,ID` or `Tn fresh`; no agent is on two lines. Start them all now.
-2. Per line: `agent=ID`: SendMessage the task to that idle agent. `poll ID,ID`: one SendMessage to each listed agent, "Relevance 0-10 for Tn (files, consumes)? Reply `score: N - reason`"; use the replies present at your next turn, highest wins, tie to the smallest `context_k`. `fresh`: Agent `superlite:implementer` (`superlite:implementer-haiku` if `Kind: mechanical`, never for design) with the prime file pasted verbatim, same bytes for the whole run, and send its task only after its reply `READY`. `evict=ID` (stderr): drop it. `dispatch` never offers a busy agent, or one past 3 tasks, 80k context or 50 idle minutes; work never queues behind an agent.
-3. Task message: heading (not the task text; the plan is in the prime), Owns and files not to touch, the Review Focus categories for its files, rulings and interface names, `SUPERLITE=<path>`, the verify command (`bash "$SL" run_tests --fast PATHS --background`, then `--wait`), and "reply in at most 200 words: status DONE / DONE_WITH_CONCERNS / NEEDS_CONTEXT / BLOCKED, files, test result, open questions".
-4. Handle every pending report in one turn. Mark reporters `busy: false`, then commit all DONE tasks in one call: `bash "$SL" commit_task T3 T5 --plan $PLAN --dispatch` commits each task's own files, prints `Tn <sha>` or `Tn FAILED` (one task: just the SHA), then `next:` and dispatch lines. A FAILED task lists unowned files or syntax/import problems: send them back to the agent. DONE_WITH_CONCERNS: fix correctness concerns before review. NEEDS_CONTEXT: answer. BLOCKED: log it, hand the task to a fixer one tier up (Fixing). Act on the `next:` lines.
+1. `bash "$SL" dispatch --plan $PLAN --cap 10` prints, per ready task, longest first: `Tn agent=ID tier=T`, `Tn poll ID,ID tier=T` or `Tn fresh tier=T agent=TYPE`; no agent is on two lines. Tiers come from `config/routing.json` via lint; never override one; a task goes only to an agent of its tier. Start them all now.
+2. Per line: `agent=ID`: SendMessage the task to that idle agent. `poll ID,ID`: one SendMessage to each listed agent, "Relevance 0-10 for Tn (files, consumes)? Reply `score: N - reason`"; use the replies present at your next turn, highest wins, tie to the smallest `context_k`. `fresh tier=T agent=TYPE`: Agent TYPE with its tier's prime file pasted verbatim (`.superlite/prime.md`; haiku: `build_prime --tier haiku` writes `prime-haiku.md`), same bytes for the whole run, and send its task only after its reply `READY`. `evict=ID` (stderr): drop it. `dispatch` never offers a busy agent, or one past 3 tasks, 80k context or 50 idle minutes; work never queues behind an agent.
+3. Task message: heading (not the task text), Owns and files not to touch, the Review Focus categories for its files, rulings and interface names, `SUPERLITE=<path>`, the verify command (`bash "$SL" run_tests --fast PATHS --background`, then `--wait`), and "reply in at most 200 words: status DONE / DONE_WITH_CONCERNS / NEEDS_CONTEXT / BLOCKED, files, test result, open questions".
+4. Handle all reports each turn. Mark reporters `busy: false`, then commit all DONE tasks in one call: `bash "$SL" commit_task T3 T5 --plan $PLAN --dispatch` commits each task's own files, prints `Tn <sha>` or `Tn FAILED` (one task: just the SHA), then `next:` and dispatch lines. A FAILED task lists unowned files or syntax/import problems: send it back. DONE_WITH_CONCERNS: fix correctness concerns before review. NEEDS_CONTEXT: answer. BLOCKED: log it; a fixer one tier up takes it (Fixing). A haiku-tier miss (NEEDS_CONTEXT, BLOCKED, red): `bash "$SL" routing miss --task Tn --plan $PLAN`; never retried on Haiku. Act on the `next:` lines.
 5. After a commit, `commit_task` has already started `probe_run --commit` and, for each seam whose two sides are now both committed, `pt_review contract --seam` in the background. A pass logs `verified`; a mismatch is an incident. Route the fix per `fixing.md`.
-6. Probe failures: `bash "$SL" incident hotspots --files <task files>` before assigning the next work. Open failures go to fixers (`fixing.md`); `commit_task` accepts generated `tests/regression/` files from whichever task commits.
+6. Probe failures: `incident hotspots --files <task files>` before the next work; open failures go to fixers (`fixing.md`). `commit_task` accepts generated `tests/regression/` files from any task.
 
 ## Reviews (D16)
 
@@ -76,16 +80,14 @@ flowchart LR
   R1 & R2 --> X[fixes + regression tests] --> K[commit_task again]
 ```
 
-- Matching tasks get `superlite:package-reviewer` the moment they commit, in the same message as the next dispatches. Others get one review per package once its tasks have committed. Once a package is the last one building, review each of its tasks as it commits, so only the final task's review trails the build.
-- Brief: `SUPERLITE=<path>`, commit or range, spec slice, `PLAN`, files in scope, `bash "$SL" incident hotspots --files ...` output, adapter path. It reviews, fixes with regression tests, logs, never commits; its files are off limits meanwhile.
-- On its report, commit the fixes with `commit_task Tn` per reviewed task ("nothing to commit" means it found nothing).
-- No review re-runs on its own fixes.
+- Matching tasks get `superlite:package-reviewer` the moment they commit, in the same message as the next dispatches. Others get one review per package once it has committed. In the last package, review each task as it commits.
+- Brief: `SUPERLITE=<path>`, commit or range, spec slice, `PLAN`, files in scope, `incident hotspots` output, adapter path. It reviews, fixes with regression tests, logs, never commits; its files are off limits meanwhile.
+- On its report, `commit_task Tn` its fixes per reviewed task.
 
 ## Coordinator batching
 
 - One message per turn: all dispatches, reviews, background starts.
-- Split any task lint flags `SIZE:`.
-- Every test run is `run_tests ... --background`; read the summary, never wait, except the one `--wait` before the final commit. No foreground suites, none after the merge.
+- Every test run is `run_tests ... --background`; read the summary, never wait, except the one `--wait` before the final commit.
 
 ## Final review
 
@@ -102,30 +104,27 @@ flowchart TB
 
 1. Gate: every task committed, every review reported and committed, every seam `verified`.
 2. Build the packet now: `bash "$SL" plan_tools packet --plan $PLAN --base <start-sha>` uses the existing `.superlite/test-summary.json`, the probe results and the incidents, and writes `.superlite/review-packet.md`. Its header says `FAST PATH` or `REVIEW REQUIRED`. In the same message start `bash "$SL" run_tests --full --background`; do not wait for it.
-3. Start `superlite:final-reviewer` at the same moment, fresh, brief = `SUPERLITE=<path>` and "read .superlite/review-packet.md", nothing more. The tree stays frozen. It answers in one turn, reading only the packet, findings only: `Verdict: APPROVED` or `CHANGES_REQUESTED` plus `file:line - problem - fix - tier N` lines.
-4. Red suite lines are findings too. Send all findings to fixers (`fixing.md`: tier by understanding, split by file), then `commit_task Tn` per owning task and one more `run_tests --background`. Leftovers become a `Ruling:` in the closing message. No second review round.
+3. Start `superlite:final-reviewer` at the same moment, fresh, brief = `SUPERLITE=<path>` and "read .superlite/review-packet.md", nothing more. The tree stays frozen. It answers in one turn from the packet only: `Verdict: APPROVED` or `CHANGES_REQUESTED` plus `file:line - problem - fix - tier N` lines.
+4. Red suite lines are findings too. Send all to fixers (`fixing.md`: tier by understanding, split by file), then `commit_task Tn` per owning task and one more `run_tests --background`. Leftovers become a `Ruling:`. No second review round.
 5. Right before the final commit, `bash "$SL" run_tests --wait` once; green means freeze.
 
 ## Freeze, rulings, finish
 
-After a green suite: no polish, refactors or new probes. Archive `.superlite/incidents.jsonl` and `progress.md` next to the plan; commit them by name. Run `bash "$SL" finish`; print its rulings in your closing message under "Rulings I made", each with what it costs if wrong. Then invoke `superlite:finishing-a-development-branch`.
+After a green suite: freeze. Archive `.superlite/incidents.jsonl` and `progress.md` next to the plan; commit by name. Run `bash "$SL" finish`; print its rulings in your closing message under "Rulings I made", each with its cost. Then invoke `superlite:finishing-a-development-branch`.
 
 ## Stop conditions
 
-Stop and ask only for: an irreversible or destructive operation; a security-sensitive action; an outward side effect (merge, push, publish); a plan so broken every path is a guess. All else is a ruling.
+Stop and ask only for: an irreversible or destructive operation; a security-sensitive action; an outward side effect (merge, push, publish); a plan so broken every path is a guess. Else rule.
 
-**Unattended** (user away, "decide yourself", or pre-approved): never end your turn to wait. For those four cases take the safe path: defer the outward or destructive action, read a broken plan conservatively, record the ruling, keep going. List what you deferred in the closing message.
+**Unattended** (user away, "decide yourself", or pre-approved): never end your turn to wait. Take the safe path: defer the outward or destructive action, read a broken plan conservatively, record the ruling, keep going; list what you deferred in the closing message.
 
 ## Red flags
 
 | Thought or act | Do instead |
 |---|---|
-| Typing the prime or a fresh agent's task before READY | `build_prime`, paste verbatim, wait for READY |
-| Sending work to a busy agent, or "after T3" | `dispatch` |
+| Typing the prime or a task before READY | `build_prime`, paste verbatim, wait for READY |
+| Work to a busy agent, or "after T3" | `dispatch` |
 | Committing by hand or staging everything | `commit_task T3 T5 --dispatch` |
 | Editing code, raw `pytest`, or a foreground suite | Fixer agent; `run_tests --background` |
-| Reviewing every task | Selective per task, else per package |
-| Final reviewer browsing or probing | Packet only; probes ran earlier |
 | Killing by image name | By PID only (a hook blocks the rest) |
-| Polish after green | Freeze |
 | Asking "should I continue?" | Only the four stop conditions |

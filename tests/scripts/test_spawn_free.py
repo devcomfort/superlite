@@ -86,7 +86,7 @@ def dispatch(tmp_path, agents, *extra, ledger=None):
     led = ledger or tmp_path / "progress.md"
     r = run("dispatch", "--pool", pool(tmp_path, agents), "--ledger", led, *extra)
     assert r.returncode == 0, r.stderr
-    return [ln.split(" ", 1) for ln in r.stdout.splitlines()], r.stderr
+    return [[x, d.split(" tier=")[0]] for x, d in (ln.split(" ", 1) for ln in r.stdout.splitlines())], r.stderr
 
 
 def test_dispatch_never_gives_one_agent_two_tasks(tmp_path):

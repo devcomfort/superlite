@@ -580,3 +580,33 @@ def test_run_tests_summary_on_fast_green_and_on_pytest_failure(tmp_path):
     custom = tmp_path / "elsewhere.json"
     assert run("run_tests", "--summary", custom, cwd=proj).returncode == 0
     assert json.loads(custom.read_text(encoding="utf-8"))["passed"] == 2
+
+
+def _lint_entry(when, newly, pending, stable=None):
+    return {"time": when, "stable": len(stable or newly), "fix": 0, "stable_ids": stable or newly,
+            "newly_stable": newly, "dispatched": [], "pending": pending}
+
+
+def test_finish_reports_unblocked_dispatch(tmp_path):
+    (tmp_path / "progress.md").write_text(
+        "unblocked: dispatched T2 T4 at 10:00:12; waiting on fixes: T1 T3\n"
+        "unblocked: dispatched T1 T3 at 10:03:40; waiting on fixes: none\n", encoding="utf-8")
+    (tmp_path / "lint-log.jsonl").write_text("\n".join(json.dumps(e) for e in [
+        _lint_entry("2026-10-18T10:00:05", ["T2", "T4"], ["T2", "T4"]),
+        _lint_entry("2026-10-18T10:03:30", ["T1", "T3"], ["T1", "T3"], ["T1", "T2", "T3", "T4"])]) + "\n", encoding="utf-8")
+    r = run("finish", "--ledger", tmp_path / "progress.md", "--log", tmp_path / "none.jsonl")
+    assert "unblocked: yes - every stable task was dispatched before the next patch; max lag 10s" in r.stdout
+
+
+def test_finish_flags_stable_task_held_across_a_patch(tmp_path):
+    (tmp_path / "progress.md").write_text("unblocked: dispatched T2 at 10:00:12; waiting on fixes: T1\n", encoding="utf-8")
+    (tmp_path / "lint-log.jsonl").write_text("\n".join(json.dumps(e) for e in [
+        _lint_entry("2026-10-18T10:00:05", ["T2", "T4"], ["T2", "T4"]),
+        _lint_entry("2026-10-18T10:03:30", ["T1"], ["T4", "T1"], ["T1", "T2", "T4"])]) + "\n", encoding="utf-8")
+    r = run("finish", "--ledger", tmp_path / "progress.md", "--log", tmp_path / "none.jsonl")
+    assert "unblocked: NO - T4 still waiting at the next lint" in r.stdout
+
+
+def test_finish_unblocked_without_lint_log(tmp_path):
+    r = run("finish", "--ledger", tmp_path / "none.md", "--log", tmp_path / "none.jsonl")
+    assert "unblocked: no lint log recorded" in r.stdout

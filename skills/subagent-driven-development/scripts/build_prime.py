@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Build the shared agent prime: byte-identical for the same inputs.
 
-    build_prime.py --plan P --spec S --sections "1,3,5" [--out .superlite/prime.md]
+    build_prime.py --plan P --spec S --sections "1,3,5" [--out .superlite/prime.md] [--tier haiku]
+
+--tier haiku (any tier whose prime is `mini` in config/routing.json) builds the mini prime into
+.superlite/prime-haiku.md: constraints, stub spec and the interfaces of that tier's tasks, no spec.
 
 Prints `sha256 size`. No timestamps; CRLF becomes LF, trailing spaces are
 stripped, and spec sections go in document order whatever order they are
@@ -18,6 +21,7 @@ import sys  # O(1)
 from pathlib import Path  # O(1)
 
 DEFAULT_OUT = ".superlite/prime.md"  # O(1)
+MINI_OUT = ".superlite/prime-haiku.md"  # O(1)
 DEFAULT_MAX_BYTES = 120_000  # O(1)
 
 PREAMBLE = """\
@@ -38,6 +42,20 @@ Rules:
 - Reply READY after reading this prime, then wait for your task.
 - Finish with DONE, DONE_WITH_CONCERNS, BLOCKED or NEEDS_CONTEXT, in at most
   200 words, with no file contents or logs.
+"""
+
+PREAMBLE_MINI = """# superlite prime (mini)
+
+You are a lane implementer in a superlite run: you take small, fully specified tasks. This prime is
+identical for every lane agent in the run; the task you are given follows it. The full plan and spec
+are not in your context: your task message and this prime state everything you need.
+
+Rules:
+- Build only what your task owns (its `Owns` files). Never edit other files.
+- Test first, run only the fast focused tests, code to the interfaces below. Never change a signature.
+- Do not commit. Kill processes by PID only.
+- Reply READY after reading this prime, then wait for your task. Finish with DONE, DONE_WITH_CONCERNS,
+  BLOCKED or NEEDS_CONTEXT in at most 200 words.
 """
 
 _HEADING = re.compile(r"^(#{1,6})\s+(.*?)\s*$")  # O(1)
@@ -118,22 +136,50 @@ def build(plan, spec, sections):  # O(B + out)
     return ("\n\n".join(parts) + "\n").encode("utf-8")  # O(out)
 
 
+def _is_mini(tier):  # O(1)
+    import routing  # O(1)
+    return (routing.load_cfg().get("tiers", {}).get(tier) or {}).get("prime") == "mini"  # O(file)
+
+
+def build_mini(plan, tier):  # O(B + n*s)
+    """Mini prime for the lane tier: constraints, the stub spec and the interfaces of that tier's tasks, from the plan alone."""
+    import plan_tools as pt  # lazy | O(1)
+    import routing  # O(1)
+    import wave0  # O(1)
+    pl = pt.Plan.load(plan)  # O(B)
+    tiers = routing.read_tiers(plan)  # O(stable.json) or a computation
+    mine = [t for t in pl.tasks if tiers.get(t.id) == tier]  # O(n)
+    cons = wave0.constraint_lines(pl)  # O(B)
+    nl = "\n"
+    parts = [normalize(PREAMBLE_MINI), "## Constraints" + nl + nl + normalize(nl.join(cons) if cons else "(the plan states none)"),  # O(B)
+             "## Stub spec" + nl + nl + "```yaml" + nl + normalize(wave0.stub_spec(pl)) + nl + "```"]  # O(q*s)
+    lines = []  # O(1)
+    for t in mine:  # O(n) iterations
+        lines.append(f"### {t.id} {t.title}")  # O(1)
+        lines.append("Owns: " + ", ".join(t.owns))  # O(o)
+        lines += [f"Produces: {x}" for x in t.produces] + [f"Consumes: {x}" for x in t.consumes]  # O(q)
+    parts.append("## Interfaces your tasks touch" + nl + nl + normalize(nl.join(lines) if lines else "(none yet)"))  # O(n*s)
+    return ((nl + nl).join(parts) + nl).encode("utf-8")  # O(out)
+
+
 def main(argv=None):  # O(B + H^2 + out)
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])  # O(1) parser setup
     ap.add_argument("--plan", required=True)  # O(1)
     ap.add_argument("--spec")  # O(1)
     ap.add_argument("--sections", default="")  # O(1)
     ap.add_argument("--out", default=DEFAULT_OUT)  # O(1)
+    ap.add_argument("--tier", default="sonnet", help="sonnet: the full prime; a tier whose prime is `mini` (haiku): the mini prime")  # O(1)
     ap.add_argument("--max-bytes", type=int, default=DEFAULT_MAX_BYTES)  # O(1)
     a = ap.parse_args(argv)  # O(1)
     wanted = [s.strip() for s in a.sections.split(",") if s.strip()]  # O(len(--sections))
     if wanted and not a.spec:  # O(1)
         die("--sections needs --spec")  # O(1)
-    data = build(a.plan, a.spec, wanted)  # O(B + H^2 + out)
+    mini = a.tier != "sonnet" and _is_mini(a.tier)  # O(1)
+    data = build_mini(a.plan, a.tier) if mini else build(a.plan, a.spec, wanted)  # O(B + H^2 + out)
     if len(data) > a.max_bytes:  # O(1)
         die(f"prime is {len(data)} bytes, over the {a.max_bytes} cap; "  # O(1)
             "move spec excerpts to referenced paths", 1)  # O(1)
-    out = Path(a.out)  # O(1)
+    out = Path(MINI_OUT if mini and a.out == DEFAULT_OUT else a.out)  # O(1)
     out.parent.mkdir(parents=True, exist_ok=True)  # O(path depth) filesystem call
     out.write_bytes(data)  # O(out) file write
     print(f"{hashlib.sha256(data).hexdigest()} {len(data)}")  # O(out) sha256

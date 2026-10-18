@@ -237,10 +237,25 @@ def parse_owns(text):  # O(len + P * len)
     return paths  # O(1)
 
 
+def _glob_rx(g):  # O(len)
+    out, i = "", 0  # O(1)
+    while i < len(g):  # O(len)
+        if g.startswith("**/", i):  # O(1)
+            out, i = out + "(?:.*/)?", i + 3  # O(1)
+        elif g[i] == "*":  # O(1)
+            out, i = out + "[^/]*", i + 1  # O(1)
+        else:  # O(1)
+            out, i = out + re.escape(g[i]), i + 1  # O(1)
+    return out  # O(1)
+
+
 def owns_match(path, owns):  # O(f * len)
     path = path.replace("\\", "/")  # O(1)
     for o in owns:  # O(f) iterations
-        if o.endswith("/"):  # O(1)
+        if "*" in o:  # glob (Wave 0 owns): `**/` also matches the root | O(len)
+            if re.fullmatch(_glob_rx(o), path):  # O(len)
+                return True  # O(1)
+        elif o.endswith("/"):  # O(1)
             if path.startswith(o):  # O(1)
                 return True  # O(1)
         elif path == o or path.startswith(o + "/"):  # O(1)

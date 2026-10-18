@@ -307,6 +307,8 @@ def commit_one(a, tid, info, own_files):  # O(m*o + py size) + git spawns (statu
     for f in changed_files():  # O(m) iterations; changed_files is O(m log m) + git spawn
         if f in own_files and not nt.owns_match(f, owns):  # O(f)
             continue  # O(1)
+        if tid == "T0" and nt.owns_match(f, other):  # Wave 0 globs never take another task's file | O(f)
+            continue  # O(1)
         if nt.owns_match(f, owns):  # O(f)
             mine.append(f)  # O(1)
         elif nt.owns_match(f, other):  # O(o)
@@ -366,6 +368,11 @@ def main(argv=None):  # O(L + t*(m*o)) + git spawns per task; one process for al
     a = ap.parse_args(argv)  # O(1)
 
     info = nt.parse_plan(a.plan)  # O(L) parse plan, once for every task
+    if "T0" not in info:  # a Wave 0 task synthesized by `wave0` | O(1)
+        import wave0  # O(1) lazy
+        w0 = wave0.synth_info(a.plan)  # O(1) file read
+        if w0:  # O(1)
+            info["T0"] = {"id": "T0", "title": w0["title"], "owns": w0["owns"], "body": ""}  # O(1)
     unknown = [t for t in a.task if t not in info]  # O(t)
     if len(a.task) == 1 and unknown:  # O(1)
         nt.die(f"unknown task {unknown[0]}")  # O(1)
