@@ -275,6 +275,7 @@ def test_lint_clean_fixture():
 
 def chain_plan(tmp_path, **extra):
     tasks = [{"id": "T1", "time": 3}, {"id": "T5", "time": 3}, {"id": "T6", "time": 2.5}, {"id": "T9", "time": 2}]
+    extra.setdefault("header", "Ruling: sequential - test fixture is a deliberate chain")
     return make_plan(tmp_path, tasks, [("T1", "T5"), ("T5", "T6"), ("T6", "T9")], **extra)
 
 

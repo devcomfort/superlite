@@ -8,6 +8,10 @@ PytestUnavailable with a clear message (`sl` may have fallen back to a bare
 run_tree(cmd, timeout, **kw): subprocess.run that, on timeout, kills the whole process
 tree of the child it started (POSIX: new session + killpg; Windows: new process group +
 `taskkill /T /F /PID <child>`), never by name. Raises subprocess.TimeoutExpired.
+
+spawn_detached(cmd, log): start cmd detached (own session / process group, stdin closed,
+output to the log file, UTF-8 forced) and return the Popen without waiting. The child owns
+its process tree (it runs run_tree itself); callers only ever kill the PID they got back.
 """
 # Complexity notation:
 #   o = bytes of child stdout + stderr, a = length of the command argv, D = descendants of the child process, P = directories on PATH
@@ -74,3 +78,15 @@ def run_tree(cmd, timeout=None, **kw):  # O(a + o) + process spawn; on timeout a
             kill_tree(proc)  # O(D) kill
             raise  # O(1)
     return subprocess.CompletedProcess(cmd, proc.returncode, out, err)  # O(1)
+
+
+def spawn_detached(cmd, log, **kw):  # O(a) + process spawn; does not wait
+    env = {**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}  # O(env)
+    if os.name == "nt":  # O(1)
+        kw["creationflags"] = (kw.get("creationflags", 0) | subprocess.CREATE_NEW_PROCESS_GROUP  # O(1)
+                               | subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW)  # O(1)
+    else:  # O(1)
+        kw["start_new_session"] = True  # O(1)
+    with open(log, "ab") as fh:  # O(1)
+        return subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=fh, stderr=subprocess.STDOUT,  # O(a) + process spawn
+                                env=env, close_fds=True, **kw)  # O(1)

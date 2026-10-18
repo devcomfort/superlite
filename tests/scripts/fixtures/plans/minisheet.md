@@ -53,3 +53,5 @@ def test_evaluate_error():
 **Consumes:** Workbook.set(ref:str, raw:str)->list[str] (T5) · Workbook.get(ref)->Value (T5)
 **Produces:** create_server(wb, port=0)->HTTPServer
 **Notes:** unknown method returns 404 {"error":"not found"} (SPEC §10)
+
+Ruling: sequential - the minisheet fixture is a deliberate chain

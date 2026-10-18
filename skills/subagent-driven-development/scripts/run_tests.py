@@ -2,7 +2,8 @@
 """Run pytest, parse the junit XML, print one summary line.
 
     run_tests.py [--fast PATHS... | --full] [--log PATH] [--ledger PATH]
-                 [--summary PATH]
+                 [--summary PATH] [--background]
+    run_tests.py --wait [--timeout S] [--summary PATH]
 
 Prints `passed failed skipped seconds` (errors count as failed). Each failing
 test becomes a `test-failure` incident; on a --full run each test file whose
@@ -12,7 +13,15 @@ a `tests` line to the progress ledger. On every run it also writes
 `{"passed": N, "failed": N, "skipped": N, "seconds": S, "mode": "fast|full",
 "failures": ["file::test: message", ...], "skipped_tests": ["file::test", ...]}`
 (a run where pytest produced nothing records failed=1 and the reason). Exit 0 when nothing failed, 1 when a
-test failed or none ran, 2 when pytest could not run. Stdlib only.
+test failed or none ran, 2 when pytest could not run.
+
+--background starts a detached run of the same command, prints `summary: <path>` and exits 0
+at once. Each background run gets its own summary file (`test-summary-<id>.json` next to
+--summary) and the pointer `test-summary.latest` (atomic) names the newest run; when a run
+finishes it also publishes its summary to --summary, unless a newer run has started since.
+--wait blocks until the pointed run's own summary exists (an older summary never counts),
+prints it, and exits 0 green, 1 red, 2 on timeout or when no background run was started.
+Stdlib only.
 """
 # Complexity notation:
 #   T = testcases in the junit XML, X = bytes of the XML, F = distinct test files, k = failing tests,
@@ -20,6 +29,7 @@ test failed or none ran, 2 when pytest could not run. Stdlib only.
 #   p = pytest path args, O = bytes of pytest output, c = length of an incident context, w = width of one line
 import argparse  # O(1)
 import json  # O(1)
+import os  # O(1)
 import re  # O(1)
 import subprocess  # O(1)
 import sys  # O(1)
@@ -35,6 +45,80 @@ import next_tasks as nt  # noqa: E402  # O(1) module load
 
 
 DEFAULT_SUMMARY = ".superlite/test-summary.json"  # O(1)
+POLL_SECONDS = 0.5  # O(1)
+DEFAULT_WAIT = 600.0  # O(1)
+
+
+def pointer_path(summary):  # O(1)
+    p = Path(summary)  # O(1)
+    return p.with_name(p.stem + ".latest")  # O(1)
+
+
+def run_summary_path(summary, run_id):  # O(1)
+    p = Path(summary)  # O(1)
+    return p.with_name(f"{p.stem}-{run_id}{p.suffix}")  # O(1)
+
+
+def atomic_write(path, text):  # O(len text) + file write
+    p = Path(path)  # O(1)
+    p.parent.mkdir(parents=True, exist_ok=True)  # O(1)
+    tmp = p.with_name(f"{p.name}.{os.getpid()}.tmp")  # O(1) unique per process
+    tmp.write_text(text, encoding="utf-8")  # O(len text)
+    tmp.replace(p)  # O(1) atomic rename
+
+
+def read_pointer(summary):  # O(1)
+    try:  # O(1)
+        d = json.loads(pointer_path(summary).read_text(encoding="utf-8"))  # O(1)
+        return d if isinstance(d, dict) and d.get("id") else None  # O(1)
+    except (OSError, ValueError):  # O(1)
+        return None  # O(1)
+
+
+def start_background(a, argv):  # O(len argv) + one detached spawn
+    run_id = f"{time.strftime('%Y%m%dT%H%M%S')}-{os.getpid()}-{os.urandom(3).hex()}"  # O(1) unique id
+    mine = run_summary_path(a.summary, run_id).resolve()  # O(1) absolute: --wait may run from another cwd
+    child = [sys.executable, str(Path(__file__).resolve()),  # O(len argv)
+             *[x for x in argv if x != "--background"],  # O(len argv)
+             "--summary", str(mine), "--publish", str(Path(a.summary).resolve()), "--run-id", run_id]  # O(1) last flag wins
+    atomic_write(pointer_path(a.summary), json.dumps({"id": run_id, "summary": str(mine),  # O(1)
+                                                      "started": time.time()}) + "\n")  # O(1)
+    pyrun.spawn_detached(child, mine.with_suffix(".log"))  # O(1) + process spawn
+    print(f"summary: {mine}")  # O(1)
+    return 0  # O(1)
+
+
+def wait_background(a):  # O(timeout / POLL_SECONDS) polls
+    ptr = read_pointer(a.summary)  # O(1)
+    if not ptr:  # O(1)
+        print("run_tests: no background run to wait for", file=sys.stderr)  # O(1)
+        return 2  # O(1)
+    mine = Path(ptr["summary"])  # O(1)
+    deadline = time.monotonic() + (a.timeout if a.timeout is not None else DEFAULT_WAIT)  # O(1)
+    while True:  # O(timeout / POLL_SECONDS) iterations
+        if mine.exists():  # O(1)
+            try:  # O(1)
+                data = json.loads(mine.read_text(encoding="utf-8"))  # O(summary size)
+                break  # O(1)
+            except (OSError, ValueError):  # O(1) half-written (non-atomic fs): retry
+                pass  # O(1)
+        if time.monotonic() >= deadline:  # O(1)
+            print(f"run_tests: timed out waiting for {mine}", file=sys.stderr)  # O(1)
+            return 2  # O(1)
+        time.sleep(POLL_SECONDS)  # O(1)
+    print(json.dumps(data, ensure_ascii=False, indent=1))  # O(summary size)
+    green = not data.get("failed") and bool(data.get("passed") or data.get("skipped"))  # O(1)
+    return 0 if green else 1  # O(1)
+
+
+def publish_summary(a):  # O(summary size)
+    """After a background run: copy its summary to the published path unless a newer run started."""
+    if not (a.run_id and a.publish):  # O(1)
+        return  # O(1)
+    ptr = read_pointer(a.publish)  # O(1)
+    if ptr and ptr["id"] != a.run_id:  # O(1) a newer run owns the published file
+        return  # O(1)
+    atomic_write(a.publish, Path(a.summary).read_text(encoding="utf-8"))  # O(summary size)
 
 
 def case_file(case):  # O(d) stats, O(d^2) path work (stats are uncached)
@@ -126,7 +210,32 @@ def main(argv=None):  # O(X + T*d + B + F log F) + pytest run + one incident app
     ap.add_argument("--ledger", default=ct.DEFAULT_LEDGER)  # O(1)
     ap.add_argument("--summary", default=DEFAULT_SUMMARY,  # O(1)
                     help="test summary JSON for pt_review packet (default %(default)s)")  # O(1)
+    ap.add_argument("--background", action="store_true",  # O(1)
+                    help="start a detached run, print `summary: <path>`, exit 0")  # O(1)
+    ap.add_argument("--wait", action="store_true", help="wait for the latest background run's summary")  # O(1)
+    ap.add_argument("--timeout", type=float, default=None, help=f"--wait limit in seconds (default {DEFAULT_WAIT:.0f})")  # O(1)
+    ap.add_argument("--run-id", default=None, help=argparse.SUPPRESS)  # O(1) set by --background
+    ap.add_argument("--publish", default=None, help=argparse.SUPPRESS)  # O(1) set by --background
+    argv = list(sys.argv[1:] if argv is None else argv)  # O(len argv)
     a = ap.parse_args(argv)  # O(1)
+    if a.wait:  # O(1)
+        return wait_background(a)  # O(timeout / POLL_SECONDS)
+    if a.background:  # O(1)
+        return start_background(a, argv)  # O(len argv) + spawn
+    if a.run_id:  # O(1) detached child: a crash still leaves a (red) summary for --wait
+        try:  # O(1)
+            return run(a)  # see run
+        except BaseException as e:  # O(1)
+            if not Path(a.summary).exists():  # O(1)
+                write_summary(a.summary, "full", {"passed": 0, "failed": 0, "skipped": 0,  # O(1)
+                                                  "skipped_tests": []}, [], 0.0,  # O(1)
+                              error=f"run_tests crashed: {e!r}")  # O(1)
+                publish_summary(a)  # O(summary size)
+            raise  # O(1)
+    return run(a)  # see run
+
+
+def run(a):  # O(X + T*d + B + F log F) + pytest run + one incident append
     paths = [p for chunk in (a.fast or []) for p in nt.csv(chunk)]  # O(p)
     label = "fast" if paths else "full"  # O(1)
 
@@ -152,11 +261,13 @@ def main(argv=None):  # O(X + T*d + B + F log F) + pytest run + one incident app
             write_summary(a.summary, label, {"passed": 0, "failed": 0, "skipped": 0,  # O(1)
                                              "skipped_tests": []}, [], seconds,  # O(1)
                           error=reason if r.returncode != 5 else None)  # O(1)
+            publish_summary(a)  # O(summary size)
             print(f"0 0 0 {seconds:.1f}")  # O(1)
             return 1 if r.returncode == 5 else 2  # O(1)
         counts, failures, files = parse_junit(xml_path)  # O(X + T*d)
 
     write_summary(a.summary, label, counts, failures, seconds)  # O(k + sk)
+    publish_summary(a)  # O(summary size)
     items = [(f, line, ctx, "test-failure", "open") for f, line, ctx in failures]  # O(k)
     if label == "full":  # O(1)
         seen = existing_verified(a.log)  # O(B)

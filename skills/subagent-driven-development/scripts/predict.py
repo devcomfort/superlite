@@ -131,6 +131,7 @@ def task_features(task, coef: dict) -> tuple[dict, str]:  # O(1)
         "loc": raw.get("loc", d["loc"]),  # O(1)
         "tests": raw.get("tests", d["tests"]),  # O(1)
         "model": raw.get("model"),  # O(1)
+        "kind": raw.get("kind"),  # O(1) mechanical|design, informational
         "docs_chars": raw.get("docs_chars"),  # O(1)
         "reads_loc": raw.get("reads_loc"),  # O(1)
     }  # O(1)

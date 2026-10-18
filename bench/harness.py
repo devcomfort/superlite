@@ -959,7 +959,7 @@ def task_records(run_dir: Path, dispatches: list[dict]) -> list[dict]:
         if not task or "loc" not in feats:
             continue
         out.append({"task": tid, "components": feats.get("components", 1), "loc": feats["loc"],
-                    "tests": feats.get("tests", "fast"), "model": feats.get("model") or models.get(tid),
+                    "tests": feats.get("tests", "fast"), "kind": feats.get("kind", "design"), "model": feats.get("model") or models.get(tid),
                     "actual_s": round(s, 1)})
     out.sort(key=lambda r: pt.nkey(r["task"]))
     return out

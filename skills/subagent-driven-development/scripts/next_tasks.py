@@ -78,7 +78,9 @@ def taskgraph_full(plan):  # O(L + n + e) once per plan per process; O(1) after
             graph = pt.parse_taskgraph(pt.Plan.load(str(plan)))  # O(L + n + e)
         except pt.PlanError as e:  # O(1)
             die(f"taskgraph failed: error: {e}", e.code)  # O(1)
-        data = {"graph": graph, "seams": pt.seams_of(graph)}  # O(e)
+        plan_obj = pt.Plan.load(str(plan))  # O(L) second parse, for the task statuses
+        data = {"graph": graph, "seams": pt.seams_of(graph),  # O(e)
+                "status": {t: plan_obj.by_id[t].status for t in graph if t in plan_obj.by_id}}  # O(n*k*s)
     else:  # O(1)
         r = run_tool("plan_tools", "taskgraph", "--plan", plan, "--format", "full")  # O(output) + process spawn
         if r.returncode != 0:  # O(1)
@@ -88,7 +90,8 @@ def taskgraph_full(plan):  # O(L + n + e) once per plan per process; O(1) after
         except json.JSONDecodeError as e:  # O(1)
             die(f"taskgraph printed invalid JSON: {e}")  # O(1)
     data = {"graph": {k: list(v) for k, v in (data.get("graph") or {}).items()},  # O(n + e)
-            "seams": list(data.get("seams") or [])}  # O(e)
+            "seams": list(data.get("seams") or []),  # O(e)
+            "status": dict(data.get("status") or {})}  # O(n)
     _GRAPHS[key] = data  # O(1)
     return data  # O(1)
 
@@ -249,13 +252,27 @@ def csv(value):  # O(len)
     return [x.strip() for x in (value or "").split(",") if x.strip()]  # O(len)
 
 
-def ready_tasks(graph, times, committed, running, cap):  # O(n + e + R log R)
+def draft_blocked(graph, status):  # O(n + e)
+    """Draft tasks plus every task that depends on one, directly or transitively."""
+    blocked = {t for t in graph if (status or {}).get(t) == "draft"}  # O(n)
+    changed = True  # O(1)
+    while changed:  # O(n) rounds worst case
+        changed = False  # O(1)
+        for t, deps in graph.items():  # O(n + e) per round
+            if t not in blocked and any(d in blocked for d in deps):  # O(deps)
+                blocked.add(t)  # O(1)
+                changed = True  # O(1)
+    return blocked  # O(1)
+
+
+def ready_tasks(graph, times, committed, running, cap, status=None):  # O(n*(n + e) + R log R) worst case (draft closure); O(n + e + R log R) without drafts
     free = cap - len(running)  # O(1)
     if free <= 0:  # O(1)
         return []  # O(1)
     done, busy = set(committed), set(running)  # O(c)
+    blocked = draft_blocked(graph, status)  # O(n + e) per round
     ready = [t for t, deps in graph.items()  # O(n + e)
-             if t not in done and t not in busy and all(d in done for d in deps)]  # O(1)
+             if t not in done and t not in busy and t not in blocked and all(d in done for d in deps)]  # O(1)
     order = {t: i for i, t in enumerate(graph)}  # O(n)
     ready.sort(key=lambda t: (-times.get(t, DEFAULT_TIME), order[t]))  # O(R log R)
     return ready[:free]  # O(cap)
@@ -269,10 +286,11 @@ def main(argv=None):  # O(L + n + e + R log R) + process spawn
     ap.add_argument("--cap", type=int, default=10)  # O(1)
     a = ap.parse_args(argv)  # O(1)
     graph = taskgraph(a.plan)  # O(n + e) + process spawn
+    status = taskgraph_full(a.plan).get("status", {})  # O(1) memoized
     info = parse_plan(a.plan)  # O(L)
     times = {t: (info[t]["est_time"] if t in info and info[t]["est_time"] is not None  # O(n)
                  else DEFAULT_TIME) for t in graph}  # O(1)
-    for t in ready_tasks(graph, times, csv(a.committed), csv(a.running), a.cap):  # O(cap) iterations after O(n + e + R log R) ready_tasks
+    for t in ready_tasks(graph, times, csv(a.committed), csv(a.running), a.cap, status):  # O(cap) iterations after O(n + e + R log R) ready_tasks
         print(t)  # O(1)
     return 0  # O(1)
 

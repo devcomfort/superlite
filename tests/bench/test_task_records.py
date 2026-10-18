@@ -60,7 +60,7 @@ def test_task_records_join_sum_and_skip(tmp_path):
     recs = {r["task"]: r for r in harness.task_records(tmp_path, dispatches)}
     assert set(recs) == {"T1", "T2", "T3"}
     assert recs["T1"] == {"task": "T1", "components": 2, "loc": 300, "tests": "fast",
-                          "model": "sonnet", "actual_s": 90.0}
+                          "kind": "design", "model": "sonnet", "actual_s": 90.0}
     assert recs["T2"]["tests"] == "slow" and recs["T2"]["model"] == "haiku" and recs["T2"]["actual_s"] == 40.0
     assert recs["T3"]["model"] == "sonnet-5-5"  # no Model field: falls back to the dispatch's model
 

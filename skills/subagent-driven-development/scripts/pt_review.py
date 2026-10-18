@@ -477,6 +477,11 @@ def locate(root: Path, plan: Plan, p: Planned) -> tuple[str, list[str], Path | N
             return module_name(root, f), parts[k:], f  # O(d)
     owned = [root / o for o in plan.tasks[p.task].owns()  # O(o*m)
              if o.endswith(".py") and not TEST_PATH_RE.search(o)]  # O(d)
+    for f in owned:  # O(o) iterations; short module names (`slug.slugify` -> src/sitegen/slug.py) | O(d) per module_name
+        mod = module_name(root, f)  # O(d)
+        for k in range(len(parts), 0, -1):  # O(d) iterations; full dotted name, or last component for k == 1
+            if ".".join(parts[:k]) == mod or (k == 1 and parts[0] == mod.rsplit(".", 1)[-1]):  # O(d)
+                return mod, parts[k:], f  # O(d)
     existing = [f for f in owned if f.is_file()]  # O(d)
     for f in existing:  # O(o) iterations
         if parts[0] in _top_level_names(f):  # O(B) re-reads + re-parses the owned file for every planned item
@@ -1389,6 +1394,43 @@ def git_diff_stat(root: Path, base: str | None) -> str:  # O(X) + up to 2 git su
     return r.stdout.strip() or "(no changes)"  # O(1)
 
 
+EXCERPT_FILE_LINES = 120  # O(1) cap on diff lines per hot-spot file
+EXCERPT_TOTAL_LINES = 600  # O(1) cap on diff lines over the whole section
+
+
+def source_excerpts(root: Path, base: str | None, files: list[str],  # O(X) + one git spawn per file shown
+                    per_file: int = EXCERPT_FILE_LINES, total: int = EXCERPT_TOTAL_LINES) -> str:
+    """Changed hunks (`git diff <base> -- file`) of the hot-spot files, bounded per file and in total."""
+    if not (root / ".git").exists():  # O(1)
+        return "- (not a git repository)"  # O(1)
+    if base is None:  # O(1)
+        first = subprocess.run(["git", "-C", str(root), "rev-list", "--max-parents=0", "HEAD"],  # O(1) + git spawn
+                               capture_output=True, text=True, encoding="utf-8", errors="replace")  # O(1)
+        roots = first.stdout.split() if first.returncode == 0 else []  # O(1)
+        base = roots[0] if roots else "HEAD"  # O(1)
+    out: list[str] = []  # O(1)
+    left = total  # O(1)
+    for n, f in enumerate(files):  # O(files) iterations
+        if left <= 0:  # O(1)
+            out.append(f"- (excerpts stopped at the {total}-line total cap; {len(files) - n} more file(s) omitted)")  # O(1)
+            break  # O(1)
+        try:  # O(1)
+            r = subprocess.run(["git", "-C", str(root), "diff", "-U3", base, "--", f],  # O(X) + git spawn
+                               capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)  # O(1)
+        except (OSError, subprocess.TimeoutExpired):  # O(1)
+            continue  # O(1)
+        lines = r.stdout.splitlines() if r.returncode == 0 else []  # O(X)
+        if not lines:  # O(1)
+            continue  # O(1)
+        take = lines[:min(per_file, left)]  # O(per_file)
+        left -= len(take)  # O(1)
+        out.append(f"### {f}\n```diff\n" + "\n".join(take) + "\n```")  # O(per_file)
+        if len(take) < len(lines):  # O(1)
+            why = "per-file" if len(take) == per_file else "total"  # O(1)
+            out.append(f"(truncated: {len(take)} of {len(lines)} diff lines shown, {why} cap)")  # O(1)
+    return "\n".join(out) or "- none (no changed hunks in the hot-spot files)"  # O(output)
+
+
 def read_test_summary(path: Path) -> tuple[str, int]:  # O(file size) total
     if not path.is_file():  # O(1)
         return "- no test summary recorded (`run_tests.py --full` runs alongside this review)", 0  # O(1)
@@ -1452,6 +1494,12 @@ def cmd_packet(a: argparse.Namespace) -> int:  # O(S*B + I*B + I log I) + git/py
     seam_text = cap_text(seam_text, 5000, f"- (+ more calls omitted; {len(seams)} total)")  # O(1)
     focus = cap_text(plan.review_focus() or "(plan has no Review Focus section)", 3000)  # O(1)
     diff = cap_text(git_diff_stat(root, a.base), 2000)  # O(X) + git spawns
+    hot: list[str] = []  # hot-spot files: those the ranked items point at, in rank order | O(1)
+    for it in items:  # O(I) iterations
+        rel = rel_to(root, root / it.file) if it.file else None  # O(d)
+        if rel and rel not in hot:  # O(H)
+            hot.append(rel)  # O(1)
+    excerpts = cap_text(source_excerpts(root, a.base, hot), max(2000, cap // 3))  # O(X) + git spawns
 
     head = [  # O(1)
         f"# Review packet: {'FAST PATH' if fast else 'REVIEW REQUIRED'}",  # O(1)
@@ -1468,7 +1516,8 @@ def cmd_packet(a: argparse.Namespace) -> int:  # O(S*B + I*B + I log I) + git/py
     tail = ["## 4. Test summary", tests_text, "",  # O(1)
             "## 5. Cross-package seams (calls from one package into another)", seam_text, "",  # O(1)
             "## 6. Diff stat", "```\n" + diff + "\n```", "",  # O(1)
-            "## 7. Review Focus", focus, ""]  # O(1)
+            "## 7. Review Focus", focus, "",  # O(1)
+            "## 8. Source excerpts (changed hunks of the hot-spot files)", excerpts, ""]  # O(1)
     sec_titles = {  # O(1)
         "incidents": "## 1. Open incidents (repeated file:line first, then unresolved, then low confidence)",  # O(1)
         "probes": "## 2. Probe results: failures still open and unverified categories",  # O(1)
@@ -1526,7 +1575,7 @@ def build_parser() -> argparse.ArgumentParser:  # O(1) total
             sp.add_argument("--out")  # O(1)
             sp.add_argument("--max-tokens", type=int, default=20000)  # O(1)
             sp.add_argument("--tests", help="test summary JSON (default .superlite/test-summary.json)")  # O(1)
-            sp.add_argument("--base", help="git ref for the diff stat (default: the root commit)")  # O(1)
+            sp.add_argument("--base", help="git ref for the diff stat and source excerpts (default: the root commit)")  # O(1)
         else:  # O(1)
             sp.add_argument("--seam", help="Ta,Tb: run parts 1-3 for that seam")  # O(1)
             sp.add_argument("--log", help="append a verified/incident entry to this JSONL log "  # O(1)

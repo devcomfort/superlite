@@ -52,7 +52,8 @@ def plan_dispatch(plan, pool, committed, running, cap):  # O(L + n + e + R*a*(F 
     info = nt.parse_plan(plan)  # O(L)
     times = {t: (info[t]["est_time"] if t in info and info[t]["est_time"] is not None  # O(n)
                  else nt.DEFAULT_TIME) for t in graph}
-    ready = nt.ready_tasks(graph, times, committed, running, cap)  # O(n + e + R log R)
+    ready = nt.ready_tasks(graph, times, committed, running, cap,  # O(n*(n + e) + R log R) draft closure
+                           nt.taskgraph_full(plan).get("status", {}))  # O(1) memoized
     idle = [ag for ag in pool.get("agents", []) if is_idle(ag)]  # O(a)
     eligible = {}  # task -> {agent id: score} over every eligible idle agent | O(1)
     eligible_somewhere = set()  # O(1)

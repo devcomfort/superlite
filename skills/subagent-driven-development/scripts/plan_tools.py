@@ -129,6 +129,11 @@ class Task:  # O(1)
     text: str = ""  # whole section text | O(1)
     synthetic: bool = False  # O(1)
 
+    @property  # O(1)
+    def status(self) -> str:  # O(k*s)
+        """`draft` when the block has `**Status:** draft` (any case); anything else is `approved`."""
+        return "draft" if self.field_text("status").strip().lower() == "draft" else "approved"  # O(k*s)
+
     def field_text(self, name: str) -> str:  # O(k*s)
         return " ".join(x for x in self.fields.get(name, []) if x).strip()  # O(k*s)
 
@@ -203,7 +208,7 @@ class Task:  # O(1)
 
     @property  # O(1)
     def explicit_features(self) -> dict:  # O(k*s)
-        """Only what the plan states as fields: **Features:** or **Components/LOC owned/Tests/Model:**."""  # O(1)
+        """Only what the plan states as fields: **Features:** or **Components/LOC owned/Tests/Model/Kind:**."""  # O(1)
         return self._features(False)  # O(k*s)
 
     @property  # O(1)
@@ -236,6 +241,9 @@ class Task:  # O(1)
                     f["model"] = m.group(1).lower()  # O(1)
 
         take(self.field_text("features"))  # O(k*s)
+        km = re.search(r"\b(mechanical|design)\b", self.field_text("kind"), re.I)  # O(k*s)
+        if km:  # O(1)
+            f["kind"] = km.group(1).lower()  # O(1) absent line means design
         for name, key in (("components", "components"), ("loc owned", "loc"), ("loc", "loc"),  # O(1) iterations (6 pairs)
                           ("model", "model"), ("tests", "tests"), ("test speed", "tests")):  # O(1)
             val = self.field_text(name)  # O(k*s)
@@ -553,6 +561,8 @@ def simulate(times: dict[str, float], graph: dict[str, list[str]], cap: int) -> 
 
 def schedule_report(plan: Plan, args) -> dict:  # O(n*(n+e) + n*p) total
     graph = parse_taskgraph(plan)  # O(L*s + R*M + e log n)
+    drafts = draft_ids(plan)  # O(n*k*s) draft tasks are not scheduled
+    graph = {t: [d for d in deps if d not in drafts] for t, deps in graph.items() if t not in drafts}  # O(n+e)
     times, source = effective_times(plan, graph, args)  # O(n*p)
     cap = args.cap  # O(1)
     sim = simulate(times, graph, cap)  # O(n*(n+e))
@@ -783,12 +793,19 @@ def import_check(path: Path) -> str | None:  # O(module size) + exec
     return None  # O(1)
 
 
+def draft_ids(plan: Plan) -> set[str]:  # O(n*k*s)
+    return {t.id for t in plan.tasks if t.status == "draft"}  # O(n*k*s)
+
+
 def cmd_stubs(args) -> int:  # O(C+L + E*s) total + file I/O
     plan = Plan.load(args.plan)  # O(C+L) + file read
     root = Path(args.root)  # O(1)
     warnings: list[str] = []  # O(1)
     per_file: dict[str, list[tuple[Task, dict]]] = {}  # O(1)
+    drafts = draft_ids(plan)  # O(n*k*s)
     for task in plan.tasks:  # O(n) iterations
+        if task.id in drafts:  # O(1) draft tasks get no stubs
+            continue  # O(1)
         for path, sig in build_stub_defs(task, warnings):  # O(q*k*s)
             per_file.setdefault(path, []).append((task, sig))  # O(1)
     rc = 0  # O(1)
@@ -873,12 +890,19 @@ def cmd_taskgraph(args) -> int:  # O(C+L + parse + n*p + merge) total
     seams = seams_of(graph)  # O(n+e)
     times, _ = effective_times(plan, graph, args)  # O(n*p)
     merges = mergeable_tasks(plan, graph, times, args)  # O(n^2*k*s)
+    status = {tid: (plan.by_id[tid].status if tid in plan.by_id else "approved") for tid in graph}  # O(n*k*s)
+    kinds = {tid: (plan.by_id[tid].explicit_features.get("kind", "design") if tid in plan.by_id else "design")  # O(n*k*s)
+             for tid in graph}  # O(n)
     if args.format == "full":  # O(1)
-        print(json.dumps({"graph": graph, "seams": seams, "mergeable": merges}, ensure_ascii=False, indent=2))  # O(n+e) output
+        print(json.dumps({"graph": graph, "seams": seams, "mergeable": merges, "status": status, "kind": kinds},  # O(n+e) output
+                         ensure_ascii=False, indent=2))  # O(1)
     else:  # O(1)
         print(json.dumps(graph, ensure_ascii=False, indent=2))  # O(n+e) output
         for s in seams:  # O(e) iterations
             print(f"seam {s}", file=sys.stderr)  # O(1)
+        for tid, st in status.items():  # O(n) iterations
+            if st == "draft":  # O(1)
+                print(f"status {tid} draft", file=sys.stderr)  # O(1)
         for m in merges:  # O(n) iterations
             to = f"merge with {m['merge_with']}" if m["merge_with"] else "no safe merge partner"  # O(1)
             print(f"warning: mergeable {m['task']} ({'; '.join(m['reasons'])}); {to}", file=sys.stderr)  # O(1)
@@ -956,6 +980,44 @@ def sig_key(sig: dict) -> str:  # O(1)
     return f"{sig['cls']}.{sig['member']}" if sig["cls"] else sig["member"]  # O(1)
 
 
+def review_focus_cases(plan: Plan) -> dict[str, set[str]]:  # O(L)
+    """{package: {cases}} from the plan's Review Focus section lines `- <package>: deep, numeric, ...`."""
+    out: dict[str, set[str]] = {}  # O(1)
+    inside = False  # O(1)
+    for i, ln in enumerate(plan.lines):  # O(L) iterations
+        if plan.fenced[i]:  # O(1)
+            continue  # O(1)
+        if re.match(r"^#{1,6}\s", ln):  # O(s)
+            inside = "review focus" in ln.lower()  # O(s)
+            continue  # O(1)
+        m = re.match(r"^\s*[-*]\s+`?([\w./-]+?)`?\s*:\s*(.+)$", ln) if inside else None  # O(s)
+        if m:  # O(1)
+            out.setdefault(m.group(1).lower(), set()).update(re.findall(r"[a-z]+", m.group(2).lower()))  # O(s)
+    return out  # O(1)
+
+
+def not_mechanical_reasons(task: Task, focus: dict[str, set[str]]) -> list[str]:  # O(k*s + pkgs)
+    feats = task.explicit_features  # O(k*s)
+    why: list[str] = []  # O(1)
+    if feats.get("loc", 0) > 150:  # O(1)
+        why.append(f"LOC owned {feats['loc']} > 150")  # O(1)
+    if feats.get("components", 0) > 2:  # O(1)
+        why.append(f"Components {feats['components']} > 2")  # O(1)
+    if feats.get("tests") == "slow":  # O(1)
+        why.append("Tests: slow")  # O(1)
+    parts = {seg.lower() for o in task.owns for seg in re.split(r"[/.]", o)}  # O(k*s*A)
+    hard = sorted({c for pkg, cases in focus.items() if pkg in parts for c in cases}  # O(pkgs)
+                  & {"deep", "numeric", "state", "protocol"})  # O(1)
+    if hard:  # O(1)
+        why.append(f"Review Focus has {', '.join(hard)}")  # O(1)
+    txt = task.text  # O(1)
+    named = (re.search(r"\btest_\w+", txt)  # O(len text)
+             and re.search(r"==|\bassert\b|\bexpect|->|\breturns?\b", txt, re.I))  # O(len text)
+    if not (re.search(r"test code", txt, re.I) or named):  # O(len text)
+        why.append("no test code or contract with exact inputs and outputs")  # O(1)
+    return why  # O(1)
+
+
 def lint_plan(plan: Plan, args) -> tuple[list[str], list[str]]:  # O(n^2*k*s + e*n + C*P + n*p + merge/simulate) total
     issues: list[str] = []  # O(1)
     warnings: list[str] = []  # O(1)
@@ -965,9 +1027,13 @@ def lint_plan(plan: Plan, args) -> tuple[list[str], list[str]]:  # O(n^2*k*s + e
     if not plan.tasks:  # O(1)
         issues.append("no task headings (### Tn ...) found")  # O(1)
 
-    # placeholders (outside code fences)
+    # placeholders (outside code fences and draft task blocks)
+    draft_lines: set[int] = set()  # O(1)
+    for t in plan.tasks:  # O(n) iterations
+        if t.status == "draft":  # O(k*s)
+            draft_lines.update(range(t.line, t.line + t.text.count("\n") + 1))  # O(lines of the block)
     for i, ln in enumerate(plan.lines):  # O(L) iterations
-        if plan.fenced[i]:  # O(1)
+        if plan.fenced[i] or i in draft_lines:  # O(1)
             continue  # O(1)
         for pat, label in PLACEHOLDERS:  # O(P) iterations, P=7 patterns
             if re.search(pat, ln, re.I):  # O(s) regex per pattern
@@ -1068,11 +1134,41 @@ def lint_plan(plan: Plan, args) -> tuple[list[str], list[str]]:  # O(n^2*k*s + e
                 to = f"merge with {m['merge_with']}" if m["merge_with"] else "no safe merge partner"  # O(1)
                 issues.append(f"{m['task']} is mergeable ({'; '.join(m['reasons'])}); {to}")  # O(1)
             rep = schedule_report(plan, args)  # O(n*(n+e) + n*p) re-parses graph and times
+            cp, ctimes = rep["critical_path"], [rep["times"][t] for t in rep["critical_path"]]  # O(n) draft tasks are not in rep
+            if len(cp) >= 3 and ctimes and sum(ctimes) > 2.5 * max(ctimes) + 1e-9:  # O(n)
+                ratio = sum(ctimes) / max(ctimes)  # O(1)
+                ruling = re.search(r"^.*Ruling:\s*sequential\s*-.*$", plan.text, re.M | re.I)  # O(C)
+                if ruling:  # O(1)
+                    warnings.append(f"NOTE: {ruling.group(0).strip()}")  # O(1)
+                else:  # O(1)
+                    issues.append(f"CHAIN: critical path {' -> '.join(cp)} is {sum(ctimes):.1f} min, {ratio:.1f}x the longest task "  # O(n)
+                                  f"({max(ctimes):.1f} min); stub the interfaces so consumers test against fakes, "  # O(1)
+                                  "or add Ruling: sequential - <why>")  # O(1)
             if rep["target_min"] is not None and not rep["target_met"]:  # O(1)
                 miss = (f"MISSED TARGET: predicted {rep['total_min']:.1f} min vs target {rep['target_min']:.1f} min "  # O(1)
                         f"— critical path {' → '.join(rep['critical_path'])}")  # O(1)
     if miss:  # O(1)
         warnings.append(miss)  # O(1)
+
+    # no Opus implementers (approved tasks only)
+    for t in plan.tasks:  # O(n) iterations
+        if t.status != "draft" and re.search(r"\bopus\b", t.field_text("model"), re.I):  # O(k*s)
+            issues.append(f"OPUS-TASK: {t.id} uses Model: opus; split it, or leave it on Sonnet and let a fixer-opus "  # O(1)
+                          "handle what Sonnet can't")  # O(1)
+
+    # Kind / Model: haiku is for mechanical tasks only (approved tasks only)
+    focus = review_focus_cases(plan)  # O(L)
+    for t in plan.tasks:  # O(n) iterations
+        if t.status == "draft":  # O(k*s)
+            continue  # O(1)
+        feats = t.explicit_features  # O(k*s)
+        kind = feats.get("kind", "design")  # O(1)
+        if re.search(r"\bhaiku\b", feats.get("model") or "", re.I) and kind != "mechanical":  # O(1)
+            issues.append(f"KIND: {t.id} uses Model: haiku but is not Kind: mechanical")  # O(1)
+        if kind == "mechanical":  # O(1)
+            why = not_mechanical_reasons(t, focus)  # O(k*s + pkgs)
+            if why:  # O(1)
+                issues.append(f"KIND: {t.id} is not mechanical: {'; '.join(why)}")  # O(1)
 
     # SPEC coverage
     if getattr(args, "spec", None):  # O(1)
@@ -1133,7 +1229,7 @@ def build_parser():  # O(1) total
     p = sub.add_parser("taskgraph", help="print task -> dependencies JSON; seams and mergeable warnings on stderr")  # O(1)
     p.add_argument("--plan", required=True)  # O(1)
     p.add_argument("--format", choices=("graph", "full"), default="graph",  # O(1)
-                   help="full: {graph, seams, mergeable} on stdout")  # O(1)
+                   help="full: {graph, seams, mergeable, status, kind} on stdout")  # O(1)
     add_predictor_args(p)  # O(1)
     p.set_defaults(func=cmd_taskgraph)  # O(1)
 
