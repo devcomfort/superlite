@@ -1,0 +1,3 @@
+{"file":"src/minisheet/workbook.py","line":8,"context":"set() accepted an empty ref; guessed it should be a no-op","agent":"T1-engine","kind":"assumption","confidence":"medium","time":"10:00:00"}
+{"file":"src/minisheet/evaluator.py","line":8,"context":"fixed an off-by-one in the prefix check","agent":"T1-engine","kind":"exception","resolution":"fixed","confidence":"high","time":"10:01:00"}
+{"file":"src/minisheet/evaluator.py","line":0,"context":"probe state: errors leave the workbook consistent","agent":"probe_run","kind":"verified","time":"10:02:00"}
