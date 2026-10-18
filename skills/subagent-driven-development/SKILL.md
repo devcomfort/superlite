@@ -89,18 +89,18 @@ flowchart LR
 
 ```mermaid
 flowchart TB
-  G[all tasks reviewed + committed] --> PK[packet]
+  G[all tasks reviewed + committed] --> ST[run_tests --full]
+  ST -- writes test-summary.json --> PK[packet]
   PK --> FR[fresh final-reviewer]
-  PK --> ST[run_tests --full]
-  FR & ST --> V{APPROVED and green?}
+  FR --> V{APPROVED and green?}
   V -- no --> FX[fix them, or split if more than 5] --> ST2[one more suite]
   V -- yes --> Z[freeze]
 ```
 
 1. Gate: every task committed, every review reported and committed, every seam `verified`.
-2. `$SL plan_tools packet --plan $PLAN --base <start-sha>` (reads `.superlite/probes/probe-results.json` and `.superlite/test-summary.json`) writes `.superlite/review-packet.md`; its header says `FAST PATH` or `REVIEW REQUIRED`.
-3. In one message: Agent `superlite:final-reviewer`, fresh, brief = `SUPERLITE=<path>` and "read .superlite/review-packet.md", nothing more; and `$SL run_tests --full` in the background. The tree is frozen while both run. It answers in one turn, no tools: `Verdict: APPROVED` (a few seconds on the fast path) or `CHANGES_REQUESTED` plus `file:line - problem - fix` lines.
-4. Red suite lines are findings. APPROVED and green: freeze. Otherwise reply "fix them" to the same reviewer (up to 5 findings; it adds a regression test per fix and reruns the covering tests). More than 5: split them by file across fresh `superlite:package-reviewer` agents in parallel. Then `commit_task Tn` per owning task, run one more `run_tests --full`, and stop; leftovers become a `Ruling:` and go in the closing message. No second review round.
+2. `$SL run_tests --full` first and wait for it to finish: it writes `.superlite/test-summary.json`. Only then `$SL plan_tools packet --plan $PLAN --base <start-sha>` (reads that and `.superlite/probes/probe-results.json`) writes `.superlite/review-packet.md`, so the packet carries this run's results; its header says `FAST PATH` or `REVIEW REQUIRED`.
+3. Agent `superlite:final-reviewer`, fresh, brief = `SUPERLITE=<path>` and "read .superlite/review-packet.md", nothing more; never start it before the packet is built from a finished suite. The tree is frozen throughout. It answers in one turn, no tools: `Verdict: APPROVED` (a few seconds on the fast path) or `CHANGES_REQUESTED` plus `file:line - problem - fix` lines.
+4. Red suite lines in the packet are findings. APPROVED and green: freeze. Otherwise reply "fix them" to the same reviewer (up to 5 findings; it adds a regression test per fix and reruns the covering tests). More than 5: split them by file across fresh `superlite:package-reviewer` agents in parallel. Then `commit_task Tn` per owning task, run one more `run_tests --full`, and stop; leftovers become a `Ruling:` and go in the closing message. No second review round.
 
 ## Freeze, rulings, finish
 
