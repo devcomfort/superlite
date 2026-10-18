@@ -18,7 +18,12 @@ Save to `docs/plans/YYYY-MM-DD-<topic>.md`. When called from `superlite:brainsto
 ## Write for the split
 
 **Who decides sets the mode.**
-- **A human approves** (the default): the plan is a document approved as a whole. Write it complete, in the order below (producers first, task blocks complete and sized for the band), give the path and ask for approval. Nothing dispatches before the yes. On approval, run `lint --stable` and dispatch the stable set at once.
+- **A human approves** (the default): the plan is a document approved as a whole. In order:
+  1. Write it complete, in the order below (producers first, task blocks complete and sized for the band).
+  2. Run `schedule --insert` and `lint --stable`, and patch the FIX tasks until only `MISSED TARGET` and `NOTE:` remain, or until a fix needs a decision from the human.
+  3. Ask for approval with the path, the predicted schedule line, and the stable/fix split: which tasks would start at once, and any FIX task still open with its reason. Nothing dispatches before the yes.
+  4. On yes, the coordinator re-runs `lint --stable` and dispatches the stable set in the same turn, split out per `dispatch`.
+  5. An open FIX task is patched and dispatched without asking again only if the fix stays inside what was approved (sizes, splits, stubs, field corrections). A fix that changes scope, an interface the human saw, or the spec coverage goes back to the human as one question.
 - **Decisions are delegated** (the user pre-approved, said "decide yourself", or an agent runs the session): write a queue that starts building while you write. Lint splits what you write into stable tasks, which build now, and fix tasks, which wait. Follow all six rules, including chunked writes, so the first chunk is stable on its own. Record open choices as `Ruling:` lines.
 
 In both modes, write for the split:
@@ -160,7 +165,7 @@ bash "<superlite-root>/skills/subagent-driven-development/scripts/sl" plan_tools
 Read the lint output:
 - **`MISSED TARGET`** is a warning, not a failure. Consider re-splitting or stubbing the tasks on the named critical path. If the chain is inherently sequential, accept the plan and record `Ruling: <why>`.
 - **`NOTE:`** (under low_min) is advice only.
-- **Every other error must be fixed**: placeholders, Consumes/Produces mismatches, diagram parse errors, `SIZE:` (over high_min), `CHAIN:`, `KIND:`, `OPUS-TASK:`, spec sections with no task. Patch the FIX tasks listed under `--stable`, rerun `schedule --insert` then `lint --stable`, until only `MISSED TARGET` and `NOTE:` remain. Stable tasks need no rework and can already be dispatched.
+- **Every other error must be fixed**: placeholders, Consumes/Produces mismatches, diagram parse errors, `SIZE:` (over high_min), `CHAIN:`, `KIND:`, `OPUS-TASK:`, spec sections with no task. Patch the FIX tasks listed under `--stable`, rerun `schedule --insert` then `lint --stable`, until only `MISSED TARGET` and `NOTE:` remain. Stable tasks need no rework: in delegated mode they dispatch now; with a human approver they wait for the yes (see "Who decides sets the mode").
 
 ## Self-review checklist
 
