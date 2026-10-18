@@ -25,12 +25,16 @@ Which tools you get depends on the multi-agent version your model preset selects
 
 ## Running superlite's agents
 
-Codex has no plugin agents, so `superlite:implementer`, `superlite:package-reviewer` and `superlite:final-reviewer` do not exist. Call `spawn_agent` and put the full text of `agents/<name>.md` (from this plugin's root, minus the frontmatter) followed by the brief into its message. Set the tier from that file's frontmatter, mapped to models on your spawn allowlist:
+Codex has no plugin agents, so the `superlite:*` agents (`implementer`, `implementer-haiku`, `package-reviewer`, `final-reviewer`, `fixer-sonnet`, `fixer-sonnet-high`, `fixer-opus`) do not exist. Call `spawn_agent` and put the full text of `agents/<name>.md` (from this plugin's root, minus the frontmatter) followed by the brief into its message. Set the tier from that file's frontmatter, mapped to models on your spawn allowlist:
 
 | Agent | Tier named in agents/<name>.md | `reasoning_effort` |
 |---|---|---|
 | implementer | sonnet-class (mid-tier) | medium |
 | package-reviewer | sonnet-class (mid-tier) | medium |
+| implementer-haiku | haiku-class (cheapest) | high |
+| fixer-sonnet | sonnet-class (mid-tier) | medium |
+| fixer-sonnet-high | sonnet-class (mid-tier) | high |
+| fixer-opus | opus-class (top tier) | high |
 | final-reviewer | opus-class (top tier) | high |
 
 The final-reviewer reads only its review packet and uses no tools; say so in the prompt. Run tests with `bash <skill-dir>/scripts/sl run_tests`. Role files under `~/.codex/agents/` (Codex 0.145+) attach via `agent_type`; use that only if you have set up roles from these files.

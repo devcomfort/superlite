@@ -13,12 +13,16 @@ Skills speak in Claude Code's tool names. On the Antigravity CLI (`agy`) they re
 
 ## Running superlite's agents
 
-Antigravity has no plugin agents, so `superlite:implementer`, `superlite:package-reviewer` and `superlite:final-reviewer` do not exist. Call `invoke_subagent` and put the full text of `agents/<name>.md` (from this plugin's root, minus the frontmatter) followed by the brief into the prompt. Tier from the `model` and `effort` in that file's frontmatter:
+Antigravity has no plugin agents, so the `superlite:*` agents (`implementer`, `implementer-haiku`, `package-reviewer`, `final-reviewer`, `fixer-sonnet`, `fixer-sonnet-high`, `fixer-opus`) do not exist. Call `invoke_subagent` and put the full text of `agents/<name>.md` (from this plugin's root, minus the frontmatter) followed by the brief into the prompt. Tier from the `model` and `effort` in that file's frontmatter:
 
 | Agent | TypeName | Tier named in agents/<name>.md |
 |---|---|---|
 | implementer | `self` | sonnet, medium |
 | package-reviewer | `self` (it fixes its own findings) | sonnet, medium |
+| implementer-haiku | `self` | haiku, high |
+| fixer-sonnet | `self` | sonnet, medium |
+| fixer-sonnet-high | `self` | sonnet, high |
+| fixer-opus | `self` | opus, high |
 | final-reviewer | `research` (read-only, no tools needed) | opus, high |
 | Explore | `research` | haiku or sonnet |
 
