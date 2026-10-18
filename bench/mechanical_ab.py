@@ -33,11 +33,50 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import harness  # noqa: E402
-import mechanical  # noqa: E402
+import taskmetrics as mechanical  # noqa: E402
 
 ROOT = harness.ROOT
 AGENTS = {"haiku": "superlite:implementer-haiku", "sonnet": "superlite:implementer"}
 WEIGHT = {"haiku": 1.0, "sonnet": 4.0}
+
+
+def weight_of(model: str) -> float:
+    """Share of the cost cap an arm's run gets: the legacy weights, else Sonnet's 4 scaled by output price."""
+    if model in WEIGHT:
+        return WEIGHT[model]
+    cfg = json.loads((harness.MODELS_JSON).read_text(encoding="utf-8"))["models"]
+    return round(4.0 * cfg[model]["output"] / cfg["sonnet"]["output"], 2)
+
+
+def agent_names() -> list[str]:
+    return sorted(p.stem for p in (ROOT / "agents").glob("*.md"))
+
+
+def parse_arms(spec: str | None, models: list[str], primes: list[str]) -> list[tuple[str, str, str]]:
+    """Arms as (agent, model, prime). `agent:model[:prime],...` names any agent file in agents/ (implementers, fixers,
+    reviewers) and any model with an entry in models.json; without --arms the legacy models x primes grid is used
+    (haiku -> implementer-haiku, sonnet -> implementer)."""
+    known = set(harness.PRICES)
+    arms = []
+    if spec:
+        for part in spec.split(","):
+            bits = part.strip().split(":")
+            if len(bits) not in (2, 3):
+                raise ValueError(f"arm {part!r}: use agent:model[:prime]")
+            agent, model, prime = bits[0].split("/")[-1], bits[1], (bits[2] if len(bits) == 3 else "full")
+            if agent not in agent_names():
+                raise ValueError(f"arm {part!r}: no agents/{agent}.md (have: {', '.join(agent_names())})")
+            if model not in known:
+                raise ValueError(f"arm {part!r}: model {model!r} has no entry in models.json (have: {', '.join(sorted(known))})")
+            if prime not in ("full", "mini"):
+                raise ValueError(f"arm {part!r}: prime must be full or mini")
+            arms.append((agent, model, prime))
+    else:
+        for m in models:
+            if m not in AGENTS:
+                raise ValueError(f"model {m!r} has no default agent; use --arms agent:model")
+            arms += [(AGENTS[m].split(":")[1], m, pr) for pr in primes]
+    return arms
 PYTEST = ["uv", "run", "--no-project", "--with", "pytest", "python", "-m", "pytest"]  # hidden-suite runner
 STATUS = re.compile(r"\bStatus:\s*\**\s*(DONE_WITH_CONCERNS|DONE|NEEDS_CONTEXT|BLOCKED)\b", re.I)
 
@@ -77,9 +116,21 @@ def stub_commit(run_dir: Path, ref: str | None) -> str:
     return "HEAD"
 
 
-def pick_tasks(plan, names: list[str] | None) -> tuple[list, str]:
+def pick_tasks(plan, names: list[str] | None, select: str | None = None) -> tuple[list, str]:
     if names:
         return [plan.by_id[n] for n in names], "named with --tasks (not marked mechanical in the plan unless it says so)"
+    if select:
+        pred = mechanical.parse_select(select)
+        rules = mechanical.load_rules(harness.ROUTING_JSON)
+        out = []
+        for t in plan.by_id.values():
+            f = t.explicit_features
+            kind = f.get("kind", "design")
+            rec = {"task": t.id, "kind": kind, "tier_planned": mechanical.planned_tier(t, "", rules, kind)[0],
+                   "model": f.get("model"), "agent_type": None}
+            if pred(rec):
+                out.append(t)
+        return out, f"selected by --select {select!r}"
     mech = [t for t in plan.by_id.values() if t.explicit_features.get("kind") == "mechanical"]
     return mech, "marked `Kind: mechanical` in the plan"
 
@@ -88,7 +139,9 @@ def owned_tests(task) -> list[str]:
     return [p for p in task.owns if re.search(r"(^|/)(tests?|__tests__)/|(^|/)test_|\.test\.|_test\.", p)]
 
 
-def brief_for(task, root: Path) -> str:
+def brief_for(task, root: Path, template: str | None = None) -> str:
+    if template:  # a fixer or reviewer arm needs its own brief: {task_id} {title} {owns} {root}
+        return Path(template).read_text(encoding="utf-8").format(task_id=task.id, title=task.title, owns=", ".join(task.owns), root=root)
     return (f"You are a superlite implementer. Project root: {root}. Read `.superlite/prime.md` (the shared plan and spec) "
             f"and `.superlite/brief.md` (common rules) in full now, if they exist. This message is both your priming and "
             f"your task, so do not reply READY: do the task now.\n\n"
@@ -151,19 +204,19 @@ def prepare(run_dir: Path, commit: str, dest: Path, setup: str, mini: tuple | No
         subprocess.run(setup, cwd=dest, shell=True, capture_output=True, env=harness.with_node(harness.clean_env()), timeout=600)
 
 
-def agent_def(model: str) -> dict:
+def agent_def(model: str, agent: str | None = None) -> dict:
     """The plugin's agent file as a `--agents` entry. The plugin itself is not loaded: its
     block-coordinator-edits hook rejects every edit made by a top-level session, and here the agent is the top level."""
-    text = (ROOT / "agents" / f"{AGENTS[model].split(':')[1]}.md").read_text(encoding="utf-8")
+    text = (ROOT / "agents" / f"{agent or AGENTS[model].split(':')[1]}.md").read_text(encoding="utf-8")
     _, front, body = text.split("---", 2)
     meta = dict(re.findall(r"^(\w+):\s*(.+)$", front, re.M))
     return {"description": meta.get("description", "implementer"), "prompt": body.strip(),
-            "model": meta.get("model", model), "tools": [t.strip() for t in meta.get("tools", "").split(",") if t.strip()]}
+            "model": model, "tools": [t.strip() for t in meta.get("tools", "").split(",") if t.strip()]}
 
 
-def claude_cmd(model: str, prompt: str, budget: float) -> list[str]:
-    name = AGENTS[model].split(":")[1]
-    meta = agent_def(model)
+def claude_cmd(model: str, prompt: str, budget: float, agent: str | None = None) -> list[str]:
+    name = agent or AGENTS[model].split(":")[1]
+    meta = agent_def(model, name)
     effort = re.search(r"^effort:\s*(\w+)", (ROOT / "agents" / f"{name}.md").read_text(encoding="utf-8"), re.M)
     settings = {"enabledPlugins": {"superpowers@claude-plugins-official": False}}
     return [shutil.which("claude") or "claude", "-p", prompt, "--agents", json.dumps({name: meta}), "--agent", name,
@@ -210,13 +263,14 @@ def score(dest: Path, task, verify: str, hidden: Path | None) -> dict:
 
 def execute(job: dict) -> dict:
     task, model, k, dest, budget = job["task"], job["model"], job["k"], job["dest"], job["budget"]
-    tag = f"{task.id}-{model}-{job['prime']}-{k}"
+    agent = job.get("agent") or AGENTS[model].split(":")[1]
+    tag = f"{task.id}-{agent}-{model}-{job['prime']}-{k}"
     log = job["out"] / f"{tag}.jsonl"
-    rec = {"task": task.id, "model": model, "prime": job["prime"], "rep": k, "budget_usd": round(budget, 3)}
+    rec = {"task": task.id, "agent": agent, "model": model, "prime": job["prime"], "arm": f"{agent}:{model}:{job['prime']}", "rep": k, "budget_usd": round(budget, 3)}
     try:
         prepare(job["run_dir"], job["commit"], dest, job["setup"], (job["plan"], task) if job["prime"] == "mini" else None)
         rec["prime_tokens_est"] = len((dest / ".superlite" / "prime.md").read_text(encoding="utf-8")) // 4 if (dest / ".superlite" / "prime.md").is_file() else 0
-        cmd = claude_cmd(model, brief_for(task, dest), budget)
+        cmd = claude_cmd(model, brief_for(task, dest, job.get("template")), budget, agent)
         job["gate"]()  # last look at `ps` right before the launch
         t0 = time.time()
         with log.open("w", encoding="utf-8") as lf, (job["out"] / f"{tag}.stderr").open("w") as ef:
@@ -282,10 +336,12 @@ def fail_reason(r: dict) -> str:
 def aggregate(runs: list[dict]) -> list[dict]:
     rows = []
     for tid in sorted({r["task"] for r in runs}, key=lambda t: int(re.sub(r"\D", "", t) or 0)):
-        for model, prime in sorted({(r["model"], r.get("prime", "full")) for r in runs if r["task"] == tid}, key=lambda x: (x[0] != "haiku", x[1])):
-            rs = [r for r in runs if r["task"] == tid and r["model"] == model and r.get("prime", "full") == prime]
+        dflt = lambda r: r.get("agent") or AGENTS.get(r["model"], ":" + r["model"]).split(":")[1]  # noqa: E731
+        for agent, model, prime in sorted({(dflt(r), r["model"], r.get("prime", "full")) for r in runs if r["task"] == tid},
+                                          key=lambda x: (x[1] != "haiku", x[1], x[0], x[2])):
+            rs = [r for r in runs if r["task"] == tid and r["model"] == model and r.get("prime", "full") == prime and dflt(r) == agent]
             med = lambda f: round(statistics.median([x for x in map(f, rs) if x is not None]), 2) if any(f(x) is not None for x in rs) else None  # noqa: E731
-            rows.append({"task": tid, "model": model, "prime": prime, "runs": len(rs),
+            rows.append({"task": tid, "agent": agent, "model": model, "prime": prime, "arm": f"{agent}:{model}:{prime}", "runs": len(rs),
                          "median_prime_tokens": med(lambda r: r.get("prime_tokens_est")),
                          "median_first_tool_s": med(lambda r: r.get("first_tool_s")), "passed": sum(r["passed"] for r in rs),
                          "pass_rate": round(sum(r["passed"] for r in rs) / len(rs), 2),
@@ -298,11 +354,11 @@ def aggregate(runs: list[dict]) -> list[dict]:
 
 
 def render(rows: list[dict], total_cost: float, cap: float) -> str:
-    cols = ["task", "model", "prime", "pass", "1st tool s", "prime tok", "median s", "median $", "tools", "out tok", "ctx tok", "failures"]
+    cols = ["task", "agent", "model", "prime", "pass", "1st tool s", "prime tok", "median s", "median $", "tools", "out tok", "ctx tok", "failures"]
     lines = ["| " + " | ".join(cols) + " |", "|" + "---|" * len(cols)]
     for r in rows:
         lines.append("| " + " | ".join(str(x) for x in (
-            r["task"], r["model"], r["prime"], f"{r['passed']}/{r['runs']}", r["median_first_tool_s"], r["median_prime_tokens"], r["median_s"], r["median_cost_usd"], r["median_tool_calls"],
+            r["task"], r.get("agent", "-"), r["model"], r["prime"], f"{r['passed']}/{r['runs']}", r["median_first_tool_s"], r["median_prime_tokens"], r["median_s"], r["median_cost_usd"], r["median_tool_calls"],
             r["median_out_tokens"], r["median_ctx_tokens"], "; ".join(r["failures"]) or "-")) + " |")
     lines.append(f"\nTotal spend ${total_cost:.2f} (cap ${cap:.2f}). Medians over the runs of each cell; 'ctx tok' = input + cache read + cache write.")
     return "\n".join(lines)
@@ -313,7 +369,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("run_dir", type=Path)
     ap.add_argument("--tasks", help="comma-separated task ids (default: plan tasks marked Kind: mechanical)")
     ap.add_argument("--n", type=int, default=3)
-    ap.add_argument("--models", default="haiku,sonnet", help="comma-separated: haiku, sonnet")
+    ap.add_argument("--models", default="haiku,sonnet", help="legacy grid: comma-separated models (haiku -> implementer-haiku, sonnet -> implementer)")
+    ap.add_argument("--arms", help="agent:model[:prime],... any agents/*.md and any model in models.json; overrides --models/--prime")
+    ap.add_argument("--select", help="task selector: kind=mechanical (default), tier=haiku, model=opus, ids=T1,T4, all; join with ;")
+    ap.add_argument("--prompt-template", help="brief file for non-implementer arms ({task_id} {title} {owns} {root})")
     ap.add_argument("--prime", default="full", help="full (the run's .superlite/prime.md), mini (task-only prime) or full,mini (both arms)")
     ap.add_argument("--cost-cap", type=float, default=2.0)
     ap.add_argument("--timeout", type=int, default=300)
@@ -330,7 +389,7 @@ def main(argv: list[str] | None = None) -> int:
     plan = harness._run_plan(run_dir)
     if plan is None:
         sys.exit(f"no plan in {run_dir / 'docs' / 'plans'}")
-    tasks, why = pick_tasks(plan, a.tasks.split(",") if a.tasks else None)
+    tasks, why = pick_tasks(plan, a.tasks.split(",") if a.tasks else None, a.select)
     if not tasks:
         sys.exit("the plan marks no task `Kind: mechanical`; pass --tasks T..,T.. with tasks a human would mark mechanical "
                  "(fully specified, small, fast tests) and say why in the report")
@@ -340,11 +399,16 @@ def main(argv: list[str] | None = None) -> int:
     hidden = a.hidden or (harness.TASK_HIDDEN if harness.TASK_HIDDEN.is_dir() else None)
     out = a.out or harness.RESULTS / f"mechanical-ab-{run_dir.name}-{time.strftime('%Y%m%d-%H%M%S')}"
     models, primes = a.models.split(","), a.prime.split(",")
-    combos = [(t, m, pr, k) for t in tasks for m in models for pr in primes for k in range(1, a.n + 1)]
-    unit = a.cost_cap / sum(WEIGHT[m] for _, m, _, _ in combos)
-    plan_txt = {"run_dir": str(run_dir), "commit": commit, "tasks": [t.id for t in tasks], "selected_because": why, "n": a.n, "models": models, "primes": primes,
+    try:
+        arms = parse_arms(a.arms, models, primes)
+    except ValueError as exc:
+        sys.exit(str(exc))
+    combos = [(t, ag, m, pr, k) for t in tasks for ag, m, pr in arms for k in range(1, a.n + 1)]
+    unit = a.cost_cap / sum(weight_of(m) for _, _, m, _, _ in combos)
+    plan_txt = {"run_dir": str(run_dir), "commit": commit, "tasks": [t.id for t in tasks], "selected_because": why, "n": a.n, "models": sorted({m for _, m, _ in arms}), "primes": sorted({p for _, _, p in arms}),
+                "arms": [f"{ag}:{m}:{pr}" for ag, m, pr in arms],
                 "cost_cap_usd": a.cost_cap, "timeout_s": a.timeout, "verify": verify, "hidden": str(hidden), "setup": setup,
-                "per_run_cap_usd": {m: round(unit * w, 3) for m, w in WEIGHT.items()}, "out": str(out)}
+                "per_run_cap_usd": {f"{ag}:{m}:{pr}": round(unit * weight_of(m), 3) for ag, m, pr in arms}, "out": str(out)}
     if a.dry_run:
         print(json.dumps(plan_txt, indent=2))
         return 0
@@ -359,9 +423,10 @@ def main(argv: list[str] | None = None) -> int:
     gate()
     out.mkdir(parents=True, exist_ok=True)
     work = Path(tempfile.mkdtemp(prefix="mech-ab-"))
-    jobs = [{"task": t, "model": m, "k": k, "prime": pr, "plan": plan, "dest": work / f"{t.id}-{m}-{pr}-{k}", "budget": unit * WEIGHT[m], "out": out,
+    jobs = [{"task": t, "agent": ag, "model": m, "k": k, "prime": pr, "plan": plan, "template": a.prompt_template,
+             "dest": work / f"{t.id}-{ag}-{m}-{pr}-{k}", "budget": unit * weight_of(m), "out": out,
              "run_dir": run_dir, "commit": commit, "verify": verify, "hidden": hidden, "setup": setup,
-             "timeout": a.timeout, "gate": gate} for t, m, pr, k in combos]
+             "timeout": a.timeout, "gate": gate} for t, ag, m, pr, k in combos]
     t0 = time.time()
     with ThreadPoolExecutor(max_workers=len(jobs)) as ex:
         runs = list(ex.map(execute, jobs))

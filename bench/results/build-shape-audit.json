@@ -1,0 +1,1739 @@
+[
+ {
+  "run": "combo-live-z1",
+  "plan": {
+   "tasks": 12,
+   "edges": 10,
+   "chain_tasks": 6,
+   "chain": [
+    "T6",
+    "T7",
+    "T8",
+    "T9",
+    "T11",
+    "T12"
+   ],
+   "base": {
+    "critical_path": [
+     "T6",
+     "T7",
+     "T8",
+     "T9",
+     "T11",
+     "T12"
+    ],
+    "critical_path_min": 15.2,
+    "build_min": 15.2,
+    "peak_width": 5
+   },
+   "edge_classes": {
+    "removable": 4,
+    "missing_produces": 0,
+    "ordering": 0,
+    "real_ruling": 6
+   },
+   "pruned_removable": {
+    "critical_path": [
+     "T6",
+     "T7",
+     "T8",
+     "T9",
+     "T11",
+     "T12"
+    ],
+    "critical_path_min": 15.2,
+    "build_min": 15.2,
+    "peak_width": 6
+   },
+   "pruned_removable_and_missing": {
+    "critical_path": [
+     "T6",
+     "T7",
+     "T8",
+     "T9",
+     "T11",
+     "T12"
+    ],
+    "critical_path_min": 15.2,
+    "build_min": 15.2,
+    "peak_width": 6
+   },
+   "pruned_edge_specific_rulings": {
+    "critical_path": [
+     "T4"
+    ],
+    "critical_path_min": 2.9,
+    "build_min": 4.1,
+    "peak_width": 10
+   },
+   "ruled_but_removable": 6,
+   "split_multi_component": {
+    "tasks_split": [
+     "T4"
+    ],
+    "critical_path_min_uncapped": 15.2,
+    "baseline_uncapped_min": 15.2
+   },
+   "edge_list": [
+    {
+     "producer": "T1",
+     "consumer": "T5",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 2,
+     "missing": []
+    },
+    {
+     "producer": "T2",
+     "consumer": "T5",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 1,
+     "missing": []
+    },
+    {
+     "producer": "T3",
+     "consumer": "T5",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 1,
+     "missing": []
+    },
+    {
+     "producer": "T4",
+     "consumer": "T5",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 3,
+     "missing": []
+    },
+    {
+     "producer": "T6",
+     "consumer": "T7",
+     "class": "real_ruling",
+     "class_without_ruling": "removable",
+     "items": 2,
+     "missing": []
+    },
+    {
+     "producer": "T7",
+     "consumer": "T8",
+     "class": "real_ruling",
+     "class_without_ruling": "removable",
+     "items": 1,
+     "missing": []
+    },
+    {
+     "producer": "T8",
+     "consumer": "T9",
+     "class": "real_ruling",
+     "class_without_ruling": "removable",
+     "items": 1,
+     "missing": []
+    },
+    {
+     "producer": "T9",
+     "consumer": "T10",
+     "class": "real_ruling",
+     "class_without_ruling": "removable",
+     "items": 2,
+     "missing": []
+    },
+    {
+     "producer": "T9",
+     "consumer": "T11",
+     "class": "real_ruling",
+     "class_without_ruling": "removable",
+     "items": 2,
+     "missing": []
+    },
+    {
+     "producer": "T11",
+     "consumer": "T12",
+     "class": "real_ruling",
+     "class_without_ruling": "removable",
+     "items": 1,
+     "missing": []
+    }
+   ]
+  },
+  "actual": null,
+  "rulings": null,
+  "rulings_in_file": 1
+ },
+ {
+  "run": "combo-live-z2",
+  "plan": {
+   "tasks": 7,
+   "edges": 0,
+   "chain_tasks": 1,
+   "chain": [
+    "T1"
+   ],
+   "base": {
+    "critical_path": [
+     "T1"
+    ],
+    "critical_path_min": 4.0,
+    "build_min": 4.0,
+    "peak_width": 7
+   },
+   "edge_classes": {
+    "removable": 0,
+    "missing_produces": 0,
+    "ordering": 0,
+    "real_ruling": 0
+   },
+   "pruned_removable": {
+    "critical_path": [
+     "T1"
+    ],
+    "critical_path_min": 4.0,
+    "build_min": 4.0,
+    "peak_width": 7
+   },
+   "pruned_removable_and_missing": {
+    "critical_path": [
+     "T1"
+    ],
+    "critical_path_min": 4.0,
+    "build_min": 4.0,
+    "peak_width": 7
+   },
+   "pruned_edge_specific_rulings": {
+    "critical_path": [
+     "T1"
+    ],
+    "critical_path_min": 4.0,
+    "build_min": 4.0,
+    "peak_width": 7
+   },
+   "ruled_but_removable": 0,
+   "split_multi_component": {
+    "tasks_split": [
+     "T1",
+     "T4",
+     "T5",
+     "T6"
+    ],
+    "critical_path_min_uncapped": 3.4,
+    "baseline_uncapped_min": 4.0
+   },
+   "edge_list": []
+  },
+  "actual": null,
+  "rulings": null,
+  "rulings_in_file": 0
+ },
+ {
+  "run": "combo-live-z3",
+  "plan": {
+   "tasks": 10,
+   "edges": 8,
+   "chain_tasks": 3,
+   "chain": [
+    "T6",
+    "T8",
+    "T9"
+   ],
+   "base": {
+    "critical_path": [
+     "T7",
+     "T8",
+     "T10"
+    ],
+    "critical_path_min": 8.8,
+    "build_min": 8.8,
+    "peak_width": 6
+   },
+   "edge_classes": {
+    "removable": 6,
+    "missing_produces": 0,
+    "ordering": 0,
+    "real_ruling": 2
+   },
+   "pruned_removable": {
+    "critical_path": [
+     "T8",
+     "T10"
+    ],
+    "critical_path_min": 5.7,
+    "build_min": 5.7,
+    "peak_width": 8
+   },
+   "pruned_removable_and_missing": {
+    "critical_path": [
+     "T8",
+     "T10"
+    ],
+    "critical_path_min": 5.7,
+    "build_min": 5.7,
+    "peak_width": 8
+   },
+   "pruned_edge_specific_rulings": {
+    "critical_path": [
+     "T10"
+    ],
+    "critical_path_min": 3.2,
+    "build_min": 3.2,
+    "peak_width": 10
+   },
+   "ruled_but_removable": 2,
+   "split_multi_component": {
+    "tasks_split": [
+     "T2",
+     "T6",
+     "T7"
+    ],
+    "critical_path_min_uncapped": 6.7,
+    "baseline_uncapped_min": 8.8
+   },
+   "edge_list": [
+    {
+     "producer": "T1",
+     "consumer": "T5",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 2,
+     "missing": []
+    },
+    {
+     "producer": "T2",
+     "consumer": "T5",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 3,
+     "missing": []
+    },
+    {
+     "producer": "T3",
+     "consumer": "T5",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 2,
+     "missing": []
+    },
+    {
+     "producer": "T4",
+     "consumer": "T5",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 2,
+     "missing": []
+    },
+    {
+     "producer": "T6",
+     "consumer": "T8",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 2,
+     "missing": []
+    },
+    {
+     "producer": "T7",
+     "consumer": "T8",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 1,
+     "missing": []
+    },
+    {
+     "producer": "T8",
+     "consumer": "T9",
+     "class": "real_ruling",
+     "class_without_ruling": "removable",
+     "items": 4,
+     "missing": []
+    },
+    {
+     "producer": "T8",
+     "consumer": "T10",
+     "class": "real_ruling",
+     "class_without_ruling": "removable",
+     "items": 2,
+     "missing": []
+    }
+   ]
+  },
+  "actual": null,
+  "rulings": null,
+  "rulings_in_file": 1
+ },
+ {
+  "run": "combo-live-z4",
+  "plan": {
+   "tasks": 11,
+   "edges": 9,
+   "chain_tasks": 4,
+   "chain": [
+    "T6",
+    "T8",
+    "T10",
+    "T11"
+   ],
+   "base": {
+    "critical_path": [
+     "T7",
+     "T8",
+     "T10",
+     "T11"
+    ],
+    "critical_path_min": 10.8,
+    "build_min": 10.8,
+    "peak_width": 6
+   },
+   "edge_classes": {
+    "removable": 9,
+    "missing_produces": 0,
+    "ordering": 0,
+    "real_ruling": 0
+   },
+   "pruned_removable": {
+    "critical_path": [
+     "T7"
+    ],
+    "critical_path_min": 3.1,
+    "build_min": 3.9,
+    "peak_width": 10
+   },
+   "pruned_removable_and_missing": {
+    "critical_path": [
+     "T7"
+    ],
+    "critical_path_min": 3.1,
+    "build_min": 3.9,
+    "peak_width": 10
+   },
+   "pruned_edge_specific_rulings": {
+    "critical_path": [
+     "T7"
+    ],
+    "critical_path_min": 3.1,
+    "build_min": 3.9,
+    "peak_width": 10
+   },
+   "ruled_but_removable": 0,
+   "split_multi_component": {
+    "tasks_split": [
+     "T1",
+     "T2",
+     "T6",
+     "T7"
+    ],
+    "critical_path_min_uncapped": 8.7,
+    "baseline_uncapped_min": 10.8
+   },
+   "edge_list": [
+    {
+     "producer": "T1",
+     "consumer": "T5",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 2,
+     "missing": []
+    },
+    {
+     "producer": "T2",
+     "consumer": "T5",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 3,
+     "missing": []
+    },
+    {
+     "producer": "T3",
+     "consumer": "T5",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 1,
+     "missing": []
+    },
+    {
+     "producer": "T4",
+     "consumer": "T5",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 1,
+     "missing": []
+    },
+    {
+     "producer": "T6",
+     "consumer": "T8",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 1,
+     "missing": []
+    },
+    {
+     "producer": "T7",
+     "consumer": "T8",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 1,
+     "missing": []
+    },
+    {
+     "producer": "T8",
+     "consumer": "T9",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 2,
+     "missing": []
+    },
+    {
+     "producer": "T8",
+     "consumer": "T10",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 2,
+     "missing": []
+    },
+    {
+     "producer": "T10",
+     "consumer": "T11",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 1,
+     "missing": []
+    }
+   ]
+  },
+  "actual": null,
+  "rulings": null,
+  "rulings_in_file": 0
+ },
+ {
+  "run": "combo-superlite-v1",
+  "plan": {},
+  "actual": null,
+  "rulings": null,
+  "rulings_in_file": 0
+ },
+ {
+  "run": "combo-superlite-v2",
+  "plan": {
+   "tasks": 11,
+   "edges": 9,
+   "chain_tasks": 5,
+   "chain": [
+    "T6",
+    "T7",
+    "T8",
+    "T10",
+    "T11"
+   ],
+   "base": {
+    "critical_path": [
+     "T6",
+     "T7",
+     "T8",
+     "T10",
+     "T11"
+    ],
+    "critical_path_min": 14.8,
+    "build_min": 14.8,
+    "peak_width": 5
+   },
+   "edge_classes": {
+    "removable": 9,
+    "missing_produces": 0,
+    "ordering": 0,
+    "real_ruling": 0
+   },
+   "pruned_removable": {
+    "critical_path": [
+     "T7"
+    ],
+    "critical_path_min": 3.2,
+    "build_min": 4.0,
+    "peak_width": 10
+   },
+   "pruned_removable_and_missing": {
+    "critical_path": [
+     "T7"
+    ],
+    "critical_path_min": 3.2,
+    "build_min": 4.0,
+    "peak_width": 10
+   },
+   "pruned_edge_specific_rulings": {
+    "critical_path": [
+     "T7"
+    ],
+    "critical_path_min": 3.2,
+    "build_min": 4.0,
+    "peak_width": 10
+   },
+   "ruled_but_removable": 0,
+   "split_multi_component": {
+    "tasks_split": [
+     "T1",
+     "T6",
+     "T7"
+    ],
+    "critical_path_min_uncapped": 10.6,
+    "baseline_uncapped_min": 14.8
+   },
+   "edge_list": [
+    {
+     "producer": "T1",
+     "consumer": "T5",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 3,
+     "missing": []
+    },
+    {
+     "producer": "T2",
+     "consumer": "T5",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 1,
+     "missing": []
+    },
+    {
+     "producer": "T3",
+     "consumer": "T5",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 1,
+     "missing": []
+    },
+    {
+     "producer": "T4",
+     "consumer": "T5",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 2,
+     "missing": []
+    },
+    {
+     "producer": "T6",
+     "consumer": "T7",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 1,
+     "missing": []
+    },
+    {
+     "producer": "T7",
+     "consumer": "T8",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 1,
+     "missing": []
+    },
+    {
+     "producer": "T8",
+     "consumer": "T9",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 2,
+     "missing": []
+    },
+    {
+     "producer": "T8",
+     "consumer": "T10",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 2,
+     "missing": []
+    },
+    {
+     "producer": "T10",
+     "consumer": "T11",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 1,
+     "missing": []
+    }
+   ]
+  },
+  "actual": {
+   "tasks_built": 11,
+   "plan_tasks": 11,
+   "complete": true,
+   "actual_span_s": 905.5,
+   "agents_cap": 5,
+   "median_start_lag_s": 23.7,
+   "replay_unpruned_span_s": 911.2,
+   "replay_error_pct": 0.6,
+   "replay_pruned_span_s": 848.0,
+   "saving_s": 63.2,
+   "saving_range_s": [
+    57.5,
+    68.9
+   ],
+   "edges_not_honoured": [
+    [
+     "T10",
+     "T11"
+    ]
+   ],
+   "removable_edges_in_run": [
+    [
+     "T1",
+     "T5"
+    ],
+    [
+     "T2",
+     "T5"
+    ],
+    [
+     "T3",
+     "T5"
+    ],
+    [
+     "T4",
+     "T5"
+    ],
+    [
+     "T6",
+     "T7"
+    ],
+    [
+     "T7",
+     "T8"
+    ],
+    [
+     "T8",
+     "T10"
+    ],
+    [
+     "T8",
+     "T9"
+    ]
+   ],
+   "active_s_by_task": {
+    "T1": 100.4,
+    "T2": 60.9,
+    "T3": 66.7,
+    "T4": 67.9,
+    "T5": 787.1,
+    "T6": 109.8,
+    "T7": 128.2,
+    "T8": 175.9,
+    "T9": 142.3,
+    "T10": 87.5,
+    "T11": 147.0
+   },
+   "predicted_min_by_task": {
+    "T1": 3.015,
+    "T2": 2.053,
+    "T3": 2.14,
+    "T4": 2.37,
+    "T5": 2.719,
+    "T6": 3.124,
+    "T7": 3.211,
+    "T8": 3.208,
+    "T9": 1.922,
+    "T10": 2.572,
+    "T11": 2.659
+   },
+   "predicted_build_min": 14.8,
+   "critical_path_tasks": [
+    "T1",
+    "T5"
+   ],
+   "slack_s": {
+    "T1": 0.0,
+    "T2": 39.5,
+    "T3": 33.7,
+    "T4": 32.5,
+    "T5": 0.0,
+    "T6": 0.0,
+    "T7": 0.0,
+    "T8": 0.0,
+    "T9": 270.7,
+    "T10": 0.0,
+    "T11": 613.2
+   }
+  },
+  "rulings": {
+   "first_draft": 0,
+   "added_after": 0,
+   "removed_after": 0,
+   "final": 0
+  },
+  "rulings_in_file": 0
+ },
+ {
+  "run": "combo-superlite-v3",
+  "plan": {
+   "tasks": 11,
+   "edges": 9,
+   "chain_tasks": 4,
+   "chain": [
+    "T6",
+    "T8",
+    "T10",
+    "T11"
+   ],
+   "base": {
+    "critical_path": [
+     "T7",
+     "T8",
+     "T10",
+     "T11"
+    ],
+    "critical_path_min": 11.8,
+    "build_min": 11.8,
+    "peak_width": 6
+   },
+   "edge_classes": {
+    "removable": 6,
+    "missing_produces": 3,
+    "ordering": 0,
+    "real_ruling": 0
+   },
+   "pruned_removable": {
+    "critical_path": [
+     "T8",
+     "T10",
+     "T11"
+    ],
+    "critical_path_min": 8.6,
+    "build_min": 8.6,
+    "peak_width": 8
+   },
+   "pruned_removable_and_missing": {
+    "critical_path": [
+     "T8"
+    ],
+    "critical_path_min": 3.3,
+    "build_min": 4.0,
+    "peak_width": 10
+   },
+   "pruned_edge_specific_rulings": {
+    "critical_path": [
+     "T8",
+     "T10",
+     "T11"
+    ],
+    "critical_path_min": 8.6,
+    "build_min": 8.6,
+    "peak_width": 8
+   },
+   "ruled_but_removable": 0,
+   "split_multi_component": {
+    "tasks_split": [
+     "T4",
+     "T6",
+     "T7"
+    ],
+    "critical_path_min_uncapped": 9.6,
+    "baseline_uncapped_min": 11.8
+   },
+   "edge_list": [
+    {
+     "producer": "T1",
+     "consumer": "T5",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 2,
+     "missing": []
+    },
+    {
+     "producer": "T2",
+     "consumer": "T5",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 1,
+     "missing": []
+    },
+    {
+     "producer": "T3",
+     "consumer": "T5",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 1,
+     "missing": []
+    },
+    {
+     "producer": "T4",
+     "consumer": "T5",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 1,
+     "missing": []
+    },
+    {
+     "producer": "T6",
+     "consumer": "T8",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 2,
+     "missing": []
+    },
+    {
+     "producer": "T7",
+     "consumer": "T8",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 2,
+     "missing": []
+    },
+    {
+     "producer": "T8",
+     "consumer": "T9",
+     "class": "missing_produces",
+     "class_without_ruling": "missing_produces",
+     "items": 2,
+     "missing": [
+      "Workbook (T8)"
+     ]
+    },
+    {
+     "producer": "T8",
+     "consumer": "T10",
+     "class": "missing_produces",
+     "class_without_ruling": "missing_produces",
+     "items": 2,
+     "missing": [
+      "Workbook (T8)",
+      "csvio (T8)"
+     ]
+    },
+    {
+     "producer": "T10",
+     "consumer": "T11",
+     "class": "missing_produces",
+     "class_without_ruling": "missing_produces",
+     "items": 1,
+     "missing": [
+      "HTTP API of B\u00a710 (T10)"
+     ]
+    }
+   ]
+  },
+  "actual": {
+   "tasks_built": 8,
+   "plan_tasks": 11,
+   "complete": true,
+   "actual_span_s": 441.6,
+   "agents_cap": 6,
+   "median_start_lag_s": 22.0,
+   "replay_unpruned_span_s": 399.2,
+   "replay_error_pct": 9.6,
+   "replay_pruned_span_s": 321.8,
+   "saving_s": 77.4,
+   "saving_range_s": [
+    35.0,
+    119.8
+   ],
+   "edges_not_honoured": [],
+   "removable_edges_in_run": [
+    [
+     "T6",
+     "T8"
+    ],
+    [
+     "T7",
+     "T8"
+    ]
+   ],
+   "active_s_by_task": {
+    "T1": 76.8,
+    "T2": 51.0,
+    "T3": 86.7,
+    "T4": 66.5,
+    "T6": 122.7,
+    "T7": 144.7,
+    "T8": 232.5,
+    "T11": 255.3
+   },
+   "predicted_min_by_task": {
+    "T1": 2.458,
+    "T2": 2.031,
+    "T3": 2.096,
+    "T4": 2.95,
+    "T6": 3.124,
+    "T7": 3.211,
+    "T8": 3.285,
+    "T11": 2.746
+   },
+   "predicted_build_min": 11.8,
+   "critical_path_tasks": [
+    "T11"
+   ],
+   "slack_s": {
+    "T1": 364.8,
+    "T2": 390.6,
+    "T3": 354.9,
+    "T4": 375.1,
+    "T6": 22.0,
+    "T7": 0.0,
+    "T8": 42.4,
+    "T11": 0.0
+   }
+  },
+  "rulings": {
+   "first_draft": 0,
+   "added_after": 0,
+   "removed_after": 0,
+   "final": 0
+  },
+  "rulings_in_file": 0
+ },
+ {
+  "run": "combo-superlite-w1",
+  "plan": {
+   "tasks": 6,
+   "edges": 4,
+   "chain_tasks": 3,
+   "chain": [
+    "T4",
+    "T5",
+    "T6"
+   ],
+   "base": {
+    "critical_path": [
+     "T4",
+     "T5",
+     "T6"
+    ],
+    "critical_path_min": 13.1,
+    "build_min": 13.1,
+    "peak_width": 3
+   },
+   "edge_classes": {
+    "removable": 2,
+    "missing_produces": 0,
+    "ordering": 0,
+    "real_ruling": 2
+   },
+   "pruned_removable": {
+    "critical_path": [
+     "T4",
+     "T5",
+     "T6"
+    ],
+    "critical_path_min": 13.1,
+    "build_min": 13.1,
+    "peak_width": 4
+   },
+   "pruned_removable_and_missing": {
+    "critical_path": [
+     "T4",
+     "T5",
+     "T6"
+    ],
+    "critical_path_min": 13.1,
+    "build_min": 13.1,
+    "peak_width": 4
+   },
+   "pruned_edge_specific_rulings": {
+    "critical_path": [
+     "T4"
+    ],
+    "critical_path_min": 5.3,
+    "build_min": 5.3,
+    "peak_width": 6
+   },
+   "ruled_but_removable": 2,
+   "split_multi_component": {
+    "tasks_split": [
+     "T1",
+     "T4",
+     "T5"
+    ],
+    "critical_path_min_uncapped": 6.7,
+    "baseline_uncapped_min": 13.1
+   },
+   "edge_list": [
+    {
+     "producer": "T1",
+     "consumer": "T3",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 6,
+     "missing": []
+    },
+    {
+     "producer": "T2",
+     "consumer": "T3",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 2,
+     "missing": []
+    },
+    {
+     "producer": "T4",
+     "consumer": "T5",
+     "class": "real_ruling",
+     "class_without_ruling": "removable",
+     "items": 2,
+     "missing": []
+    },
+    {
+     "producer": "T5",
+     "consumer": "T6",
+     "class": "real_ruling",
+     "class_without_ruling": "removable",
+     "items": 2,
+     "missing": []
+    }
+   ]
+  },
+  "actual": {
+   "tasks_built": 4,
+   "plan_tasks": 6,
+   "complete": true,
+   "actual_span_s": 746.1,
+   "agents_cap": 3,
+   "median_start_lag_s": 0.0,
+   "replay_unpruned_span_s": 579.0,
+   "replay_error_pct": 22.4,
+   "replay_pruned_span_s": 579.0,
+   "saving_s": 0.0,
+   "saving_range_s": [
+    0.0,
+    167.1
+   ],
+   "edges_not_honoured": [],
+   "removable_edges_in_run": [],
+   "active_s_by_task": {
+    "T1": 142.3,
+    "T2": 148.4,
+    "T4": 373.2,
+    "T6": 436.7
+   },
+   "predicted_min_by_task": {
+    "T1": 4.892,
+    "T2": 3.634,
+    "T4": 5.284,
+    "T6": 3.805
+   },
+   "predicted_build_min": 13.1,
+   "critical_path_tasks": [
+    "T6"
+   ],
+   "slack_s": {
+    "T1": 603.8,
+    "T2": 597.7,
+    "T4": 372.9,
+    "T6": 0.0
+   }
+  },
+  "rulings": {
+   "first_draft": 1,
+   "added_after": 0,
+   "removed_after": 0,
+   "final": 1
+  },
+  "rulings_in_file": 1
+ },
+ {
+  "run": "combo-superlite-w2",
+  "plan": {
+   "tasks": 8,
+   "edges": 7,
+   "chain_tasks": 4,
+   "chain": [
+    "T5",
+    "T6",
+    "T7",
+    "T8"
+   ],
+   "base": {
+    "critical_path": [
+     "T5",
+     "T6",
+     "T7",
+     "T8"
+    ],
+    "critical_path_min": 13.3,
+    "build_min": 13.3,
+    "peak_width": 4
+   },
+   "edge_classes": {
+    "removable": 3,
+    "missing_produces": 0,
+    "ordering": 0,
+    "real_ruling": 4
+   },
+   "pruned_removable": {
+    "critical_path": [
+     "T5",
+     "T6",
+     "T7",
+     "T8"
+    ],
+    "critical_path_min": 13.3,
+    "build_min": 13.3,
+    "peak_width": 5
+   },
+   "pruned_removable_and_missing": {
+    "critical_path": [
+     "T5",
+     "T6",
+     "T7",
+     "T8"
+    ],
+    "critical_path_min": 13.3,
+    "build_min": 13.3,
+    "peak_width": 5
+   },
+   "pruned_edge_specific_rulings": {
+    "critical_path": [
+     "T5"
+    ],
+    "critical_path_min": 3.7,
+    "build_min": 3.7,
+    "peak_width": 8
+   },
+   "ruled_but_removable": 4,
+   "split_multi_component": {
+    "tasks_split": [
+     "T1",
+     "T5",
+     "T7"
+    ],
+    "critical_path_min_uncapped": 8.3,
+    "baseline_uncapped_min": 13.3
+   },
+   "edge_list": [
+    {
+     "producer": "T1",
+     "consumer": "T4",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 3,
+     "missing": []
+    },
+    {
+     "producer": "T2",
+     "consumer": "T4",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 2,
+     "missing": []
+    },
+    {
+     "producer": "T3",
+     "consumer": "T4",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 2,
+     "missing": []
+    },
+    {
+     "producer": "T5",
+     "consumer": "T6",
+     "class": "real_ruling",
+     "class_without_ruling": "removable",
+     "items": 2,
+     "missing": []
+    },
+    {
+     "producer": "T5",
+     "consumer": "T7",
+     "class": "real_ruling",
+     "class_without_ruling": "removable",
+     "items": 1,
+     "missing": []
+    },
+    {
+     "producer": "T6",
+     "consumer": "T7",
+     "class": "real_ruling",
+     "class_without_ruling": "removable",
+     "items": 1,
+     "missing": []
+    },
+    {
+     "producer": "T7",
+     "consumer": "T8",
+     "class": "real_ruling",
+     "class_without_ruling": "removable",
+     "items": 2,
+     "missing": []
+    }
+   ]
+  },
+  "actual": {
+   "tasks_built": 6,
+   "plan_tasks": 8,
+   "complete": true,
+   "actual_span_s": 1456.8,
+   "agents_cap": 4,
+   "median_start_lag_s": 168.9,
+   "replay_unpruned_span_s": 1441.1,
+   "replay_error_pct": 1.1,
+   "replay_pruned_span_s": 1441.1,
+   "saving_s": 0.0,
+   "saving_range_s": [
+    0.0,
+    15.7
+   ],
+   "edges_not_honoured": [],
+   "removable_edges_in_run": [],
+   "active_s_by_task": {
+    "T1": 120.7,
+    "T2": 1441.1,
+    "T3": 161.3,
+    "T5": 202.5,
+    "T7": 239.3,
+    "T8": 303.4
+   },
+   "predicted_min_by_task": {
+    "T1": 3.015,
+    "T2": 2.61,
+    "T3": 2.675,
+    "T5": 3.681,
+    "T7": 3.342,
+    "T8": 3.522
+   },
+   "predicted_build_min": 13.3,
+   "critical_path_tasks": [
+    "T2"
+   ],
+   "slack_s": {
+    "T1": 1336.1,
+    "T2": 0.0,
+    "T3": 1279.8,
+    "T5": 0.0,
+    "T7": 0.0,
+    "T8": 500.9
+   }
+  },
+  "rulings": {
+   "first_draft": 1,
+   "added_after": 0,
+   "removed_after": 0,
+   "final": 1
+  },
+  "rulings_in_file": 1
+ },
+ {
+  "run": "combo-superlite-w3",
+  "plan": {
+   "tasks": 9,
+   "edges": 7,
+   "chain_tasks": 3,
+   "chain": [
+    "T5",
+    "T7",
+    "T8"
+   ],
+   "base": {
+    "critical_path": [
+     "T5",
+     "T7",
+     "T9"
+    ],
+    "critical_path_min": 8.8,
+    "build_min": 8.8,
+    "peak_width": 5
+   },
+   "edge_classes": {
+    "removable": 4,
+    "missing_produces": 0,
+    "ordering": 0,
+    "real_ruling": 3
+   },
+   "pruned_removable": {
+    "critical_path": [
+     "T5",
+     "T7",
+     "T9"
+    ],
+    "critical_path_min": 8.8,
+    "build_min": 8.8,
+    "peak_width": 7
+   },
+   "pruned_removable_and_missing": {
+    "critical_path": [
+     "T5",
+     "T7",
+     "T9"
+    ],
+    "critical_path_min": 8.8,
+    "build_min": 8.8,
+    "peak_width": 7
+   },
+   "pruned_edge_specific_rulings": {
+    "critical_path": [
+     "T9"
+    ],
+    "critical_path_min": 3.4,
+    "build_min": 3.4,
+    "peak_width": 9
+   },
+   "ruled_but_removable": 3,
+   "split_multi_component": {
+    "tasks_split": [
+     "T1"
+    ],
+    "critical_path_min_uncapped": 8.8,
+    "baseline_uncapped_min": 8.8
+   },
+   "edge_list": [
+    {
+     "producer": "T1",
+     "consumer": "T4",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 3,
+     "missing": []
+    },
+    {
+     "producer": "T2",
+     "consumer": "T4",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 2,
+     "missing": []
+    },
+    {
+     "producer": "T3",
+     "consumer": "T4",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 2,
+     "missing": []
+    },
+    {
+     "producer": "T5",
+     "consumer": "T7",
+     "class": "real_ruling",
+     "class_without_ruling": "removable",
+     "items": 2,
+     "missing": []
+    },
+    {
+     "producer": "T6",
+     "consumer": "T7",
+     "class": "real_ruling",
+     "class_without_ruling": "removable",
+     "items": 1,
+     "missing": []
+    },
+    {
+     "producer": "T7",
+     "consumer": "T8",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 1,
+     "missing": []
+    },
+    {
+     "producer": "T7",
+     "consumer": "T9",
+     "class": "real_ruling",
+     "class_without_ruling": "removable",
+     "items": 1,
+     "missing": []
+    }
+   ]
+  },
+  "actual": {
+   "tasks_built": 6,
+   "plan_tasks": 9,
+   "complete": true,
+   "actual_span_s": 1017.7,
+   "agents_cap": 5,
+   "median_start_lag_s": 0.0,
+   "replay_unpruned_span_s": 1017.7,
+   "replay_error_pct": 0.0,
+   "replay_pruned_span_s": 1017.7,
+   "saving_s": 0.0,
+   "saving_range_s": [
+    0.0,
+    0.0
+   ],
+   "edges_not_honoured": [],
+   "removable_edges_in_run": [],
+   "active_s_by_task": {
+    "T1": 105.3,
+    "T2": 111.6,
+    "T3": 105.1,
+    "T5": 1017.7,
+    "T6": 142.5,
+    "T9": 210.6
+   },
+   "predicted_min_by_task": {
+    "T1": 2.993,
+    "T2": 2.545,
+    "T3": 2.763,
+    "T5": 2.61,
+    "T6": 2.545,
+    "T9": 3.435
+   },
+   "predicted_build_min": 8.8,
+   "critical_path_tasks": [
+    "T5"
+   ],
+   "slack_s": {
+    "T1": 912.4,
+    "T2": 906.1,
+    "T3": 912.6,
+    "T5": 0.0,
+    "T6": 875.2,
+    "T9": 477.6
+   }
+  },
+  "rulings": {
+   "first_draft": 0,
+   "added_after": 0,
+   "removed_after": 0,
+   "final": 0
+  },
+  "rulings_in_file": 1
+ },
+ {
+  "run": "combo-superlite-x1",
+  "plan": {
+   "tasks": 16,
+   "edges": 12,
+   "chain_tasks": 5,
+   "chain": [
+    "T8",
+    "T9",
+    "T12",
+    "T13",
+    "T14"
+   ],
+   "base": {
+    "critical_path": [
+     "T10",
+     "T11",
+     "T12",
+     "T15",
+     "T16"
+    ],
+    "critical_path_min": 11.5,
+    "build_min": 11.5,
+    "peak_width": 8
+   },
+   "edge_classes": {
+    "removable": 4,
+    "missing_produces": 0,
+    "ordering": 0,
+    "real_ruling": 8
+   },
+   "pruned_removable": {
+    "critical_path": [
+     "T10",
+     "T11",
+     "T12",
+     "T15",
+     "T16"
+    ],
+    "critical_path_min": 11.5,
+    "build_min": 11.5,
+    "peak_width": 9
+   },
+   "pruned_removable_and_missing": {
+    "critical_path": [
+     "T10",
+     "T11",
+     "T12",
+     "T15",
+     "T16"
+    ],
+    "critical_path_min": 11.5,
+    "build_min": 11.5,
+    "peak_width": 9
+   },
+   "pruned_edge_specific_rulings": {
+    "critical_path": [
+     "T4"
+    ],
+    "critical_path_min": 2.7,
+    "build_min": 4.1,
+    "peak_width": 10
+   },
+   "ruled_but_removable": 8,
+   "split_multi_component": {
+    "tasks_split": [
+     "T4"
+    ],
+    "critical_path_min_uncapped": 11.5,
+    "baseline_uncapped_min": 11.5
+   },
+   "edge_list": [
+    {
+     "producer": "T1",
+     "consumer": "T6",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 1,
+     "missing": []
+    },
+    {
+     "producer": "T2",
+     "consumer": "T6",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 1,
+     "missing": []
+    },
+    {
+     "producer": "T3",
+     "consumer": "T6",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 1,
+     "missing": []
+    },
+    {
+     "producer": "T4",
+     "consumer": "T6",
+     "class": "removable",
+     "class_without_ruling": "removable",
+     "items": 3,
+     "missing": []
+    },
+    {
+     "producer": "T8",
+     "consumer": "T9",
+     "class": "real_ruling",
+     "class_without_ruling": "removable",
+     "items": 2,
+     "missing": []
+    },
+    {
+     "producer": "T10",
+     "consumer": "T11",
+     "class": "real_ruling",
+     "class_without_ruling": "removable",
+     "items": 2,
+     "missing": []
+    },
+    {
+     "producer": "T9",
+     "consumer": "T12",
+     "class": "real_ruling",
+     "class_without_ruling": "removable",
+     "items": 1,
+     "missing": []
+    },
+    {
+     "producer": "T11",
+     "consumer": "T12",
+     "class": "real_ruling",
+     "class_without_ruling": "removable",
+     "items": 1,
+     "missing": []
+    },
+    {
+     "producer": "T12",
+     "consumer": "T13",
+     "class": "real_ruling",
+     "class_without_ruling": "removable",
+     "items": 1,
+     "missing": []
+    },
+    {
+     "producer": "T13",
+     "consumer": "T14",
+     "class": "real_ruling",
+     "class_without_ruling": "removable",
+     "items": 1,
+     "missing": []
+    },
+    {
+     "producer": "T12",
+     "consumer": "T15",
+     "class": "real_ruling",
+     "class_without_ruling": "removable",
+     "items": 1,
+     "missing": []
+    },
+    {
+     "producer": "T15",
+     "consumer": "T16",
+     "class": "real_ruling",
+     "class_without_ruling": "removable",
+     "items": 1,
+     "missing": []
+    }
+   ]
+  },
+  "actual": {
+   "tasks_built": 8,
+   "plan_tasks": 16,
+   "complete": false,
+   "actual_span_s": 42.6,
+   "agents_cap": 8,
+   "median_start_lag_s": 0.0,
+   "replay_unpruned_span_s": 42.6,
+   "replay_error_pct": 0.0,
+   "replay_pruned_span_s": 42.6,
+   "saving_s": 0.0,
+   "saving_range_s": [
+    0.0,
+    0.0
+   ],
+   "edges_not_honoured": [],
+   "removable_edges_in_run": [],
+   "active_s_by_task": {
+    "T1": 42.4,
+    "T2": 42.6,
+    "T3": 30.7,
+    "T4": 41.6,
+    "T5": 41.8,
+    "T7": 39.5,
+    "T8": 42.0,
+    "T10": 27.2
+   },
+   "predicted_min_by_task": {
+    "T1": 1.922,
+    "T2": 1.965,
+    "T3": 2.053,
+    "T4": 2.732,
+    "T5": 1.791,
+    "T7": 1.748,
+    "T8": 1.579,
+    "T10": 2.545
+   },
+   "predicted_build_min": 11.5,
+   "critical_path_tasks": [
+    "T1",
+    "T2",
+    "T4",
+    "T5",
+    "T8"
+   ],
+   "slack_s": {
+    "T1": 0.2,
+    "T2": 0.0,
+    "T3": 11.8,
+    "T4": 0.8,
+    "T5": 0.5,
+    "T7": 2.6,
+    "T8": 0.0,
+    "T10": 14.6
+   }
+  },
+  "rulings": {
+   "first_draft": 1,
+   "added_after": 0,
+   "removed_after": 0,
+   "final": 1
+  },
+  "rulings_in_file": 1
+ },
+ {
+  "run": "combo-superlite-y1",
+  "plan": {},
+  "actual": null,
+  "rulings": null,
+  "rulings_in_file": null
+ },
+ {
+  "run": "combo-superlite-y2",
+  "plan": {},
+  "actual": null,
+  "rulings": null,
+  "rulings_in_file": null
+ },
+ {
+  "run": "combo-superlite-y3",
+  "plan": {},
+  "actual": null,
+  "rulings": null,
+  "rulings_in_file": null
+ }
+]

@@ -101,3 +101,31 @@ def test_own_tests_uses_task_script(tmp_path, monkeypatch):
     run_dir.mkdir()
     monkeypatch.setattr(harness, "TASK_HIDDEN", suite)
     assert harness.own_tests(run_dir) == {"own_tests_summary": "2 passed, 2 failed"}
+
+
+def test_plugin_dir_defaults_to_repo_root_and_honours_the_override(monkeypatch, tmp_path):
+    import importlib
+
+    monkeypatch.delenv("SUPERLITE_PLUGIN_DIR", raising=False)
+    assert harness.PLUGIN_DIR == harness.ROOT
+    args = harness.ARM_ARGS["superlite"]
+    assert args[args.index("--plugin-dir") + 1] == str(harness.ROOT)
+    monkeypatch.setenv("SUPERLITE_PLUGIN_DIR", str(tmp_path))
+    try:
+        reloaded = importlib.reload(harness)
+        assert reloaded.PLUGIN_DIR == tmp_path
+        args = reloaded.ARM_ARGS["superlite"]
+        assert args[args.index("--plugin-dir") + 1] == str(tmp_path)
+        assert reloaded.ARM_ARGS["superpowers"] != args  # only the superlite arm changes
+    finally:
+        monkeypatch.delenv("SUPERLITE_PLUGIN_DIR", raising=False)
+        importlib.reload(harness)
+
+
+def test_prompt_suffix_is_appended_only_when_set(monkeypatch):
+    monkeypatch.delenv("BENCH_PROMPT_SUFFIX", raising=False)
+    assert harness.with_suffix("Build it.\n") == "Build it.\n"
+    monkeypatch.setenv("BENCH_PROMPT_SUFFIX", "  ")
+    assert harness.with_suffix("Build it.\n") == "Build it.\n"
+    monkeypatch.setenv("BENCH_PROMPT_SUFFIX", "Use the planning flow.")
+    assert harness.with_suffix("Build it.\n") == "Build it.\n\nUse the planning flow.\n"

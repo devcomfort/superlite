@@ -24,7 +24,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime
 from pathlib import Path
 
-import mechanical
+import taskmetrics as mechanical  # old name `mechanical` is a thin alias module
 
 if os.name == "nt":  # every child (claude, bash, uv, git, pytest) gets a hidden console: no popup windows
     _Popen = subprocess.Popen
@@ -37,6 +37,9 @@ if os.name == "nt":  # every child (claude, bash, uv, git, pytest) gets a hidden
     subprocess.Popen = _NoWindowPopen
 
 ROOT = Path(__file__).resolve().parent.parent
+# The superlite arm loads this plugin directory (default: this repo); SUPERLITE_PLUGIN_DIR points it at e.g.
+# a git worktree of an older commit, so a frozen baseline can be compared with the working tree.
+PLUGIN_DIR = Path(os.environ.get("SUPERLITE_PLUGIN_DIR") or ROOT)
 BENCH = ROOT / "bench"
 # Outside the repo, so an arm can't wander up into hidden_tests/ or reference/.
 RUNS = Path(os.environ.get("BENCH_RUNS", ROOT.parent / "superlite-bench-runs"))
@@ -140,6 +143,12 @@ def count_src_loc(run_dir: Path, cfg: dict | None = None) -> int:
     return total
 
 
+def with_suffix(prompt: str) -> str:
+    """The task prompt plus BENCH_PROMPT_SUFFIX (default empty: prompt unchanged), e.g. to force a workflow."""
+    suffix = os.environ.get("BENCH_PROMPT_SUFFIX", "").strip()
+    return prompt.rstrip() + "\n\n" + suffix + "\n" if suffix else prompt
+
+
 def prompt_path(human: bool = False, task: str | None = None) -> Path:
     """The task's own prompt (bench/tasks/<task>/prompt.md, or prompt-human.md in human mode) when it
     exists; else the shared bench/prompt.md (prompt-human.md), which says "Build the project"."""
@@ -164,7 +173,7 @@ ARM_ARGS = {
             "enabledPlugins": {"superpowers@claude-plugins-official": False},
             "skillOverrides": {"orchestrator": "off"},
         }),
-        "--plugin-dir", str(ROOT),
+        "--plugin-dir", str(PLUGIN_DIR),
     ],
 }
 
@@ -276,7 +285,7 @@ def cmd_run(arm: str, rep: str, smoke: bool, human: bool = False) -> None:
     budget = os.environ.get("BENCH_BUDGET", "1" if smoke else "60")
     base = [claude, "-p"]
     extra = common_args(budget) + ARM_ARGS[arm]
-    prompt = SMOKE_PROMPT if smoke else prompt_path(human).read_text(encoding="utf-8")
+    prompt = SMOKE_PROMPT if smoke else with_suffix(prompt_path(human).read_text(encoding="utf-8"))
 
     t0 = time.time()
     invoke(base + [prompt] + extra, run_dir, log, err)
@@ -1090,7 +1099,8 @@ def load_speeds(path: Path = MODELS_JSON) -> dict[str, float]:
             if m.get("output_tps")}
 
 
-def mechanical_score(run_dir: Path, events: list[dict], dispatches: list[dict]) -> tuple[list[dict], dict]:
+def mechanical_score(run_dir: Path, events: list[dict], dispatches: list[dict], baseline: str = "sonnet",
+                     select: str | None = None) -> tuple[list[dict], dict]:
     """(`tasks` records, `mechanical` block) for one run, from its stream, plan and .superlite/ notes."""
     tasks = task_records(run_dir, dispatches, events)
     plan = _run_plan(run_dir)
@@ -1100,7 +1110,7 @@ def mechanical_score(run_dir: Path, events: list[dict], dispatches: list[dict]) 
         graph = {}
     tids = set(plan.by_id) if plan is not None else set()
     block = mechanical.mechanical_block(tasks, graph, PRICES, load_speeds(), plan,
-                                        mechanical.other_haiku(events, PRICES, tids))
+                                        mechanical.other_haiku(events, PRICES, tids), baseline, select)
     return tasks, block
 
 
