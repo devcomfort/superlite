@@ -380,7 +380,7 @@ scripts/bump-version.sh --check
 | Hidden tests | 89 / 89 | 89 / 89 |
 | Cost (API-equivalent) | $8.15 | **$3.28** (60% cheaper) |
 
-Full write-up: [bench/report.md](bench/report.md). (An earlier version of these numbers overstated both costs because of a scoring bug; see the correction note in the report.)
+Full write-up: [docs/benchmark-report.md](docs/benchmark-report.md). (An earlier version of these numbers overstated both costs because of a scoring bug; see the correction note in the report.)
 
 ### Running it
 

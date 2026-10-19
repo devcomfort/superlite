@@ -12,3 +12,5 @@ The README covers what superlite is, the results, and how to install and use it.
 | [Language](language.md) | Any project language; what is Python-only |
 | [How the rules are enforced](gates.md) | The gates that hold the rules in place with code |
 | [Example review plan](example-review-plan.md) | What a human orchestrator is shown before approving a build |
+| [MVP flow](mvp-flow.md) | Design of MVP mode: feature plan, clickable prototype, then the normal build |
+| [Benchmark report](benchmark-report.md) | The full comparison table and observations |
