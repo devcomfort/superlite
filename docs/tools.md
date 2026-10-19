@@ -13,7 +13,8 @@ Mechanical steps are scripts, not agents. Every tool runs as `bash <skill-dir>/s
 | `dispatch` | Ready tasks and who runs each, in one call (`next_tasks` + `assign`) |
 | `next_tasks` | Computes which tasks are ready |
 | `assign` | Scores idle agents and picks the most relevant one |
-| `commit_task` | Checks scope and commits one or more tasks' owned files; `--dispatch` also prints the next dispatch |
+| `commit_task` | Checks scope, then checkpoints (default: hidden `refs/superlite/*` commits, branch untouched) or commits (autocommit on) one or more tasks' owned files; `--dispatch` also prints the next dispatch |
+| `autocommit` | `on`/`off`/`status` opt-in real commits (`.superlite/autocommit.json`, env `SUPERLITE_AUTOCOMMIT=1`); `apply` turns checkpoints into commits on the current branch; `clean` deletes them |
 | `run_tests` | Runs the project's test command, with `--background`, then `--wait` for the summary; writes `.superlite/test-summary.json` |
 | `testcmd` | Resolves the project's test command: `.superlite/test-cmd.json`, else detection (npm, go, cargo, dotnet, Python) |
 | `pt_review` | `adapter`, `packet` (the final review packet) and `contract` (seam checks) |
@@ -23,6 +24,6 @@ Mechanical steps are scripts, not agents. Every tool runs as `bash <skill-dir>/s
 | `metrics` | Per-task time, tokens and cost from `.superlite/metrics.jsonl` and agent transcripts |
 | `history` | Run history: `write` rows to `~/.superlite/history.jsonl`, `read`, `derive` stats, `import` bench scores |
 | `graphify_gate` | Gates Graphify for search in non-trivial codebases |
-| `finish` | Collects the finish summary (rulings, commits, test counts, open incidents) |
+| `finish` | Collects the finish summary (rulings, commits or checkpoints, test counts, open incidents) |
 
 `_pyrun.py` is a shared helper, not a tool. Probes live in `probes/` with the probe pack in `probes/pack/`.

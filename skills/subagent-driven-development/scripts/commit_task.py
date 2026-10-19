@@ -11,6 +11,11 @@ task's agent in the pool (`current: Tn`) gets `current` cleared, `busy: false`, 
 its `tasks`. `--dispatch` then prints `next:` and the `dispatch` lines (ready tasks and
 agents) for the updated ledger; a dispatch failure only warns, the commits stand.
 
+Default is checkpoint mode: instead of committing, a shadow commit (never on HEAD, the
+branch or the user's index) is stored under refs/superlite/<run>/<Tn> and its SHA is what
+the ledger, probes and seam checks use; `sl autocommit on` (or SUPERLITE_AUTOCOMMIT=1)
+makes real commits.
+
 Steps: scope check (changes outside every task's Owns block the commit and are logged as
 incidents; files another task owns are left uncommitted, silently), py_compile plus an import check on each touched .py file, commit
 with the task title, append the SHA to the progress ledger, then launch in the
@@ -45,6 +50,7 @@ from pathlib import Path  # O(1)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # O(1)
 import next_tasks as nt  # noqa: E402 | O(1)
+import autocommit  # noqa: E402 | O(1)
 
 DEFAULT_LEDGER = ".superlite/progress.md"  # O(1)
 DEFAULT_LOG = ".superlite/incidents.jsonl"  # O(1)
@@ -339,13 +345,16 @@ def commit_one(a, tid, info, own_files):  # O(m*o + py size) + git spawns (statu
                                    for f, line, msg in problems])
         return 1, None  # O(1)
 
-    git("add", "-A", "--", *mine)  # O(m) + process spawn
-    title = f"{tid}: {task['title']}"  # O(1)
-    r = git("commit", "-m", title, check=False)  # O(1) + process spawn
-    if r.returncode != 0:  # O(1)
-        print((r.stderr or r.stdout).strip(), file=sys.stderr)  # O(1)
-        return 1, None  # O(1)
-    sha = git("rev-parse", "HEAD").stdout.strip()  # O(1) + process spawn
+    if autocommit.is_on():  # opt-in: a real commit on the user's branch | O(1)
+        git("add", "-A", "--", *mine)  # O(m) + process spawn
+        title = f"{tid}: {task['title']}"  # O(1)
+        r = git("commit", "-m", title, check=False)  # O(1) + process spawn
+        if r.returncode != 0:  # O(1)
+            print((r.stderr or r.stdout).strip(), file=sys.stderr)  # O(1)
+            return 1, None  # O(1)
+        sha = git("rev-parse", "HEAD").stdout.strip()  # O(1) + process spawn
+    else:  # default: shadow checkpoint under refs/superlite, HEAD/branch/index/tree untouched | O(m) + git spawns
+        sha = autocommit.checkpoint(tid, task["title"], mine, a.plan)  # O(m) + process spawn
     append_ledger(a.ledger, f"- commit {tid} {sha[:10]} {task['title']}")  # O(1) file I/O
     launch_probes(sha, a.plan)  # O(L) + process spawn
     launch_seam_checks(a.plan, tid, a.ledger, a.log)  # O(c + s) + process spawn per seam (graph memoized)

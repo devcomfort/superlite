@@ -74,6 +74,7 @@ flowchart TB
 ## Decisions you can change
 - Characters counted as: Unicode characters (default) | bytes
 - Output: three labelled lines (default) | one line like `wc`
+- Commits: leave my work uncommitted, superlite takes hidden checkpoints (default) | commit each task on my branch
 
 ## Risks
 - Very large files: read in chunks (default) so memory stays small.
@@ -94,7 +95,7 @@ About 3 to 6 minutes and $1 to $2 (rough, until linted).
 - Name parts by what they do for the human, not by file or function.
 - Keep each diagram at 12 nodes or fewer, with labels in plain words.
 - Quote every `subgraph` title and any label with spaces or punctuation (`subgraph W1["Wave 1, in parallel"]`), so the diagram renders.
-- Say what you assumed; keep decisions as `default | alternative`.
+- Say what you assumed; keep decisions as `default | alternative`. Always list the Commits decision; if the human picks per-task commits, run `sl autocommit on` after approval.
 - Keep scope and parts exactly what the machine plan will contain: any change to scope or to an interface the human saw goes
   back to the human as one question.
 

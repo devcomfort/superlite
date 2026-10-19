@@ -17,6 +17,7 @@ PLAN = HERE / "fixtures" / "run_plan" / "plan.md"
 ENV = {k: v for k, v in os.environ.items() if k not in ("SUPERLITE_SL", "SUPERLITE_PYTHON")}
 ENV["SUPERLITE_BASH"] = str(HERE / "no-such-bash")  # a spawn through sl would fail
 ENV["SUPERLITE_PROBE_RUN"] = str(HERE / "no_such_probe.py")
+ENV["SUPERLITE_AUTOCOMMIT"] = "1"  # these tests assert real commits
 
 
 def run(script, *args, cwd=None):

@@ -23,6 +23,7 @@ ENV = {
     **os.environ,
     "SUPERLITE_SL": str(PLAN_FIX / "fake_sl"),     # D18: tools call each other via sl
     "SL_TEST_PYTHON": sys.executable,
+    "SUPERLITE_AUTOCOMMIT": "1",                   # these tests assert real commits
     "SUPERLITE_PROBE_RUN": str(PLAN_FIX / "no_such_probe.py"),
 }
 

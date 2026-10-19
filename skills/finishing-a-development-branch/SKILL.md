@@ -19,11 +19,11 @@ No question. Take the first that works:
 - `main`, then `master`, if it exists locally (`git rev-parse --verify`)
 - otherwise the local branch with the closest `git merge-base` to HEAD
 
-Also note the current branch, `git status --short` (commit or report uncommitted work first), and whether a remote exists.
+Also note the current branch, `git status --short` (superlite default: the build is uncommitted by design, see `finish`; otherwise commit or report uncommitted work first), and whether a remote exists.
 
 ## 3. Summarize
 
-Prepare: branch, base, commits ahead (`git log --oneline <base>..HEAD`), `git diff --stat <base>..HEAD`, the test counts line, and the rulings list recorded during the work (including review findings left unfixed).
+Prepare: branch, base, commits ahead (`git log --oneline <base>..HEAD`), `git diff --stat <base>..HEAD`, the test counts line, and the rulings list recorded during the work (including review findings left unfixed). When the work was a superlite build, also the build report summary from `finish` (or `sl report --plan <plan>`); print it before the options and name `<plan>.report.md` (next to the plan) as the full report, to show on request.
 
 ## 4. Decide
 
@@ -33,9 +33,11 @@ Prepare: branch, base, commits ahead (`git log --oneline <base>..HEAD`), `git di
 2. Push and open a pull request
 3. Keep the branch as is
 
+If `finish` printed NOTHING WAS COMMITTED (superlite default), options 1 and 2 read "Commit, then ...": after the answer run `sl autocommit apply` (or `/superlite:commit`), which refuses if HEAD moved or the tree has unrelated changes; option 3 leaves the work uncommitted. Never run `git commit` yourself.
+
 No further menus or typed confirmations. Act on the answer.
 
-**Unattended** (the user is away or said to decide yourself): keep the branch. Do not push, merge or open a PR. Print the summary and the rulings list as the closing message.
+**Unattended** (the user is away or said to decide yourself): keep the branch. Do not push, merge or open a PR. Print the summary and the rulings list as the closing message (uncommitted work stays uncommitted).
 
 ## 5. Execute the choice
 

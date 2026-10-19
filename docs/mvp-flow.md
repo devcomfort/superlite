@@ -9,13 +9,27 @@ MVP = smallest working version of something new, planned on a clickable prototyp
 ## Step order
 
 1. **Orchestrator choice.** Human or AI, asked once with the other questions (`sl orchestrator set`).
-2. **Feature plan.** The plan can be as long as it needs to be, but it is organised around features, because the goal of the MVP stage is to agree on the MVP features. `docs/plans/<date>-<topic>.mvp.md` opens with an ASCII diagram of the UI (for `cli`, the terminal session; for `library` and `api`, the call and its output), so the plan is read as an experience first. Feature ids are drawn on the diagram (for example `[F2]` on the part of the screen it adds), so each box maps to a feature. The goal, the target kind (`web`, `cli`, `library`, `api`, `other`), and the feature list follow. The prototype page is built from this diagram. Each feature has an id, a title, what the user gets from it, how it is used, its dependencies, its size, a priority (must, should, could) and an in-or-out recommendation with the reason. It also lists the features considered and left out. Screens, data and architecture appear only as far as a feature needs them.
+2. **Feature plan.** The plan can be as long as it needs to be, but it is organised around features, because the goal of the MVP stage is to agree on the MVP features. `docs/plans/<date>-<topic>.mvp.md` opens with an ASCII diagram of how the product is used, chosen to fit the target kind (see below), so the plan is read as an experience first. Feature ids are drawn on the diagram (for example `[F2]` on the part it adds), so each part maps to a feature. The goal, the target kind (`web`, `cli`, `library`, `api`, `other`), and the feature list follow. The prototype page is built from this diagram. Each feature has an id, a title, what the user gets from it, how it is used, its dependencies, its size, a priority (must, should, could) and an in-or-out recommendation with the reason. It also lists the features considered and left out. Screens, data and architecture appear only as far as a feature needs them.
 3. **Prototype.** Generate one self-contained file, `.superlite/mvp/prototype.html` (raw HTML and JS, no build step, no network, fake data), from the skill's page template. No product code is written.
 4. **Agree on features.** Human mode: the coordinator shows the path and a five-line summary, then ends its turn. The user opens the page, clicks through, cuts or reorders features, edits labels, leaves notes, and presses **Save feedback**.
 5. **Approve.** The user replies "approve" in chat. The reply is what approves; the button only saves the file.
 6. **Regenerate the plan.** The coordinator reads `mvp-feedback.json` and rewrites the plan in the agent format (task graph, interfaces, FROZEN, examples, chains, sizes), with cuts under "Out of scope". `sl orchestrator approve` runs, then `lint --stable`.
 7. **Build.** The normal flow: Wave 0, tiered dispatch, tests, package reviews, final review.
 8. **Discard.** The prototype is deleted at finish, unless the target is `web` and the approved feedback says `keep_as_frontend: true`; then it seeds the frontend task as its starting file.
+
+## The opening diagram, by target kind
+
+The diagram shows how the product is used, not a faux screen. Pick the form that fits:
+
+| Target | Diagram | Shows |
+|---|---|---|
+| `web`, desktop, mobile | Screen wireframe, plus a line of arrows for the main navigation | Layout, controls, where each feature sits |
+| `cli` | Command tree, then one sample session (typed commands and their output) | Commands, flags, exit codes, what the user sees |
+| `library` | The public surface as a box per module with its main calls, then a short usage snippet as a call flow | Entry points, types in and out, how calls chain |
+| `api` or service | An endpoint table (method, path, purpose), then a request and response sequence between caller, service and store | Routes, payloads, error cases |
+| pipeline, bot, agent, other | A data-flow diagram: inputs, steps, outputs, and where the user intervenes | Stages, hand-offs, triggers |
+
+Combined products use more than one (for example a web app with an API gets a wireframe and a sequence). The same diagram drives the mock in the prototype page, so the mock for a `cli` is the typed session and the mock for a `library` is the runnable call flow with sample results.
 
 ## How it fits the orchestrator choice
 

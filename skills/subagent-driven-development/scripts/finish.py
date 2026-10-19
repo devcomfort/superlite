@@ -127,12 +127,32 @@ def history_section(plan, sl_dir):  # O(M + B + n*(n + e))
     return chr(10).join(out)  # O(n)
 
 
+def checkpoint_note(ledger):  # O(files) + git spawns; [] unless this run took hidden checkpoints
+    """Lines saying nothing was committed and how to commit, when state is in checkpoint mode."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))  # O(1)
+    import autocommit  # O(1)
+    sl = Path(ledger).resolve().parent  # O(1)
+    try:  # O(1)
+        st = json.loads((sl / "checkpoints.json").read_text(encoding="utf-8"))  # O(size)
+    except (OSError, ValueError):  # O(1)
+        return []  # O(1)
+    if autocommit.is_on() or not st.get("entries"):  # O(1)
+        return []  # O(1)
+    files = sorted({f for e in st["entries"] for f in e["files"]})  # O(files)
+    return ["", "NOTHING WAS COMMITTED: your branch is untouched and the work is uncommitted in the tree.",  # O(1)
+            f"changed files: {len(files)}; hidden checkpoint refs: refs/superlite/{st['run']}/* ({len(st['entries'])})",
+            "to commit: `sl autocommit apply` (one commit per task, same titles, no trailer) or `git add -A && git commit`",
+            "to discard the checkpoints: `sl autocommit clean`"]
+
+
 def summary(ledger, log, lint_log=DEFAULT_LINT_LOG, plan=None, sl_dir=None):  # O(R*w + I*w + C + G)
     rulings, commits, tests = read_ledger(ledger)  # O(R*w)
     incidents = open_incidents(log)  # O(I*w)
     out = ["# superlite run summary", ""]  # O(1)
-    out.append(f"commits: {len(commits)}")  # O(1)
+    cp = checkpoint_note(ledger)  # checkpoint mode: nothing was committed | O(1) + git spawns
+    out.append(f"{'checkpoints' if cp else 'commits'}: {len(commits)}")  # O(1)
     out += [f"- {t} {sha[:10]} {title}".rstrip() for t, sha, title in commits]  # O(C)
+    out += cp  # O(1)
     out.append("")  # O(1)
     out.append(f"rulings: {len(rulings)}")  # O(1)
     out += [f"- {r}" for r in rulings]  # O(G)

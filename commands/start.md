@@ -15,3 +15,9 @@ Start a superlite session. Arguments: $ARGUMENTS
    - MVP: same as `/superlite:mvp`.
    - Feature: same as `/superlite:feature`.
    - Debug: same as `/superlite:debug`.
+
+Menu by the "Project state" line in the session context (show only the options that fit):
+- run in progress: Resume, Status, Start something new, Finish.
+- existing code: Feature, Debug, Regular, MVP (a new app beside it), Review.
+- empty folder: MVP (plan, clickable prototype to assess, then build), Regular.
+Skip the menu for a clear one-line request you can size as trivial, or when the user already typed a `/superlite:` command.
