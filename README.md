@@ -63,6 +63,8 @@ And it is not tied to one language. A TypeScript site generator went from spec t
 | **Hands off** | "Build X. I am away, decide yourself" | The AI orchestrator plans, lints, dispatches and rules on open choices without stopping |
 | **Ship it** | "We are done: finish the branch" | Verification first, then merge or PR options. It never pushes without you |
 
+**Start commands.** `/superlite:start` asks for the mode and who orchestrates; `/superlite:mvp <what>`, `/superlite:feature <change>` and `/superlite:debug <bug>` go straight to a mode. Say it in plain words instead if you prefer; the commands are shortcuts. Also: `/superlite:status`, `resume`, `stop`, `report`, `setup`, `human`, `ai`, `approve`, `review`, `small` and `finish`.
+
 **Who orchestrates.** With a human orchestrator nothing is built, dispatched or written (except the review plan) until you reply approve; you review a plain-language plan with diagrams (a `.review.md`, about two pages, with a rough time and cost) **before** anything is linted or sent off; after your yes the coordinator rewrites it in the agent format (task graph, interfaces, examples, sizes) and runs it. With the AI orchestrator it does everything itself, with no review plan and no questions.
 
 ---

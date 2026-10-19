@@ -5,6 +5,12 @@ description: Use when starting any conversation - explains superlite, how to siz
 
 Superlite: parallel work, short reports.
 
+**Start menu.** On the first user message of a session, if it does not already name a mode and no run is in progress, open with ONE AskUserQuestion built from the "Project state" line: the mode (only the options that fit), then who orchestrates. Skip it for a clear one-line request you can size as trivial, or when the user typed a `/superlite:` command.
+- State "run in progress": Resume, Status, Start something new, Finish.
+- State "existing code": Feature, Debug, Regular, MVP (a new app beside it), Review.
+- State "empty folder": MVP (plan, then a clickable prototype to assess, then build), Regular.
+- Orchestrator: Human (you approve a review plan first) or AI (hands off). Run `sl orchestrator set human|ai`, then continue with the matching command's flow (`/superlite:mvp`, `feature`, `debug`, `resume`, `status`, `review`, `finish`).
+
 **Size the request first.**
 - Trivial: just do it (human orchestrator: only after an approved review plan).
 - Bounded (change to an existing flow): short design in chat, then build.
