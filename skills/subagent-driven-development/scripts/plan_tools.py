@@ -1448,6 +1448,12 @@ def cmd_lint_stable(args) -> int:  # O(lint + n*k*s)
              "dispatched": sorted(sent & set(stable), key=nkey), "pending": pending, "frozen": len(frozen)}
     with (sl_dir / "lint-log.jsonl").open("a", encoding="utf-8") as fh:  # O(1)
         fh.write(json.dumps(entry) + "\n")  # O(n)
+    if stable and not frozen:  # the fixed forecast `report` compares against, written once | O(1) after the first
+        try:  # O(1)
+            import report  # O(1) lazy (report imports this module)
+            report.save_projection(args.plan, sl_dir)  # O(n*(n + e)) first time
+        except Exception as e:  # never blocks a lint | O(1)
+            print(f"report: projection not saved ({e})", file=sys.stderr)  # O(1)
     return 0 if stable and not frozen else 1  # O(1)
 
 

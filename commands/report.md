@@ -1,7 +1,10 @@
 ---
-description: Report time, cost and quality of the last run and the history across runs.
-argument-hint: "[number of runs]"
+description: List stored build reports, show one build's report summary, or the history across runs.
+argument-hint: "[plan name] [full]"
 ---
 
-Report on runs. Arguments: $ARGUMENTS (default 5).
-Run `sl metrics --dir .superlite` for the last run and `sl history read --n <N>` for earlier ones. Show a compact table: date, size band, minutes, cost, review findings, probe failures. Then two lines on what stands out. Change nothing.
+Arguments: $ARGUMENTS. Every build keeps its report next to its plan: `<plan>.report.md` and `.report.json` (the latest is also `.superlite/report.md`).
+- No argument: run `sl report --list` (newest first: plan, date, time and cost delta), then `sl history read --n 5` and a short table: date, size band, minutes, cost, review findings, probe failures.
+- `<plan name>`: run `sl report --show <plan name>` and print the summary.
+- `<plan name> full`: run `sl report --show <plan name> --full` and print it.
+- Reports on the build just finished: `sl report --plan <plan>`. Change nothing else.

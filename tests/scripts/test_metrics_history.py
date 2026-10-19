@@ -185,8 +185,9 @@ def test_finish_records_run_and_reports_predicted_vs_actual(tmp_path, monkeypatc
     (sl / "progress.md").write_text("# Progress ledger\n", encoding="utf-8")
     cp = run(SCRIPTS / "finish.py", "--ledger", sl / "progress.md", "--log", sl / "i.jsonl", "--plan", p, cwd=tmp_path)
     assert cp.returncode == 0, cp.both
-    assert "history: 3 rows appended; predicted vs actual (min):" in cp.out
-    assert "- T9 sonnet predicted" in cp.out and "FIRST-TIME MISS" in cp.out and "run: predicted" in cp.out
+    assert "history: 3 rows appended" in cp.out and cp.out.count("predicted vs actual") == 0
+    assert "build report (projected -> actual)" in cp.out and "takeaway:" in cp.out and cp.out.count("build report (projected") == 1
+    assert "Full report:" in cp.out and (sl / "report.md").is_file() and "biggest miss" in cp.out
     assert (home / "history.jsonl").is_file() and (home / "stats.json").is_file()
 
 
