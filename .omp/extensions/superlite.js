@@ -29,6 +29,9 @@ export default function superliteOmpExtension(pi) {
 	pi.setLabel("Superlite");
 
 	pi.on("context", (event, ctx) => {
+		// Main session only: a subagent's brief comes from whoever dispatched it,
+		// and superlite's start menu must not hijack an unrelated child.
+		if (ctx?.agent && ctx.agent.kind !== "main") return;
 		const messages = event.messages;
 		if (!Array.isArray(messages) || messages.some(messageContainsBootstrap)) return;
 		const bootstrap = getBootstrapContent(ctx.cwd);

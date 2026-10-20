@@ -19,6 +19,8 @@ Skills speak in Claude Code's tool names. On Oh My Pi (omp) they resolve as foll
 
 ## Running superlite's agents
 
+The bootstrap in this message is injected into the main session only. Subagents get their brief from the coordinator that dispatched them, so follow the parent's plan and this mapping when you are a dispatched agent.
+
 omp discovers this package's `agents/` directory as task agents: `implementer`, `implementer-haiku`, `package-reviewer`, `final-reviewer`, `fixer-sonnet`, `fixer-sonnet-high`, `fixer-opus`. Dispatch them by name; the agent definition already carries its brief.
 
 - Give the shared plan, spec and global constraints in `context`, and the single task in `tasks[].task`. Every spawn starts fresh, so the two-message `READY` handshake from the Claude Code flow does not apply: send the plan and the task in the same call.

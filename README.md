@@ -310,15 +310,13 @@ The Pi package loads the superlite skills and a small extension that injects the
 
 ### Oh My Pi (omp)
 
-Point omp at a checkout; the package manifest declares its extension entry, so omp loads the extension and discovers `skills/` and `agents/` next to it:
+Link a checkout as an omp plugin; the package manifest declares its extension entry, so omp loads the extension and discovers `skills/` and `agents/` next to it:
 
-```yaml
-# ~/.omp/agent/config.yml
-extensions:
-  - ~/path/to/superlite
+```bash
+omp plugin link ~/path/to/superlite
 ```
 
-Restart omp. The extension injects the `using-superlite` bootstrap at session start, after a compaction, and into every subagent session, together with the omp tool mapping. The seven `agents/*.md` files become task agents dispatchable by name (`task` with `agent: "implementer"`). Add the superlite skill names to `skills.includeSkills` if that list is in use.
+Restart omp. The extension injects the `using-superlite` bootstrap into the main session at start and after a compaction, together with the omp tool mapping; subagent sessions are left alone so an unrelated child is not pulled into the start menu. The seven `agents/*.md` files become task agents dispatchable by name (`task` with `agent: "implementer"`), and fall back to the session model because their Claude model tiers do not resolve. Add the superlite skill names to `skills.includeSkills` when that list is in use, since it is an allowlist.
 
 omp has no Claude Code hook protocol, so `hooks/` does not run there: the coordinator gates in that directory stay advisory and are restated in `skills/using-superlite/references/omp-tools.md`.
 
