@@ -25,5 +25,10 @@
     "skills": [
       "./skills"
     ]
+  },
+  "omp": {
+    "extensions": [
+      "./.omp/extensions/superlite.js"
+    ]
   }
 }

@@ -308,6 +308,20 @@ pi -e /path/to/superlite
 
 The Pi package loads the superlite skills and a small extension that injects the `using-superlite` bootstrap at session startup and again after compaction. Subagent and task-list tools remain optional Pi companion packages.
 
+### Oh My Pi (omp)
+
+Point omp at a checkout; the package manifest declares its extension entry, so omp loads the extension and discovers `skills/` and `agents/` next to it:
+
+```yaml
+# ~/.omp/agent/config.yml
+extensions:
+  - ~/path/to/superlite
+```
+
+Restart omp. The extension injects the `using-superlite` bootstrap at session start, after a compaction, and into every subagent session, together with the omp tool mapping. The seven `agents/*.md` files become task agents dispatchable by name (`task` with `agent: "implementer"`). Add the superlite skill names to `skills.includeSkills` if that list is in use.
+
+omp has no Claude Code hook protocol, so `hooks/` does not run there: the coordinator gates in that directory stay advisory and are restated in `skills/using-superlite/references/omp-tools.md`.
+
 ### Qwen Code
 
 Qwen Code installs plugins from Claude Code marketplaces directly.

@@ -30,3 +30,4 @@ A lean build-lifecycle plugin: 8 skills in `skills/`, 3 agents in `agents/`, and
 | Hermes Agent | `.hermes-plugin/` |
 | OpenCode | `.opencode/`, `index.js`, `package.json` |
 | Pi | `.pi/extensions/superlite.ts`, `package.json` |
+| Oh My Pi (omp) | `.omp/extensions/superlite.js`, `package.json` |
